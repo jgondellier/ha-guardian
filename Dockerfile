@@ -1,7 +1,7 @@
 # Base Alpine (musl) volontairement : le Docker 20.10.3 de DSM 7.1 bloque l'appel
 # système clone3 qu'utilisent les glibc récentes (Debian bookworm et suivantes),
 # ce qui empêcherait Python de créer des threads. musl n'utilise pas clone3.
-FROM python:3.12-alpine
+FROM python:3.15-alpine
 
 ARG APP_VERSION=dev
 ARG GIT_SHA=dev
