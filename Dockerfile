@@ -1,7 +1,7 @@
 # Base Alpine (musl) volontairement : le Docker 20.10.3 de DSM 7.1 bloque l'appel
 # système clone3 qu'utilisent les glibc récentes (Debian bookworm et suivantes),
 # ce qui empêcherait Python de créer des threads. musl n'utilise pas clone3.
-FROM python:3.12-alpine
+FROM python:3.15-alpine
 
 ARG APP_VERSION=dev
 ARG GIT_SHA=dev
@@ -18,7 +18,11 @@ RUN apk upgrade --no-cache && apk add --no-cache iputils tzdata
 
 WORKDIR /srv
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# pip et setuptools ne servent qu'à l'installation : on les retire de l'image finale
+# (ils embarquent leurs propres bibliothèques, parfois vulnérables)
+RUN pip install --no-cache-dir -r requirements.txt \
+ && pip uninstall -y pip setuptools wheel 2>/dev/null; \
+    rm -rf /usr/local/lib/python3*/ensurepip
 COPY app ./app
 
 # Données persistantes : toujours sur un volume, même si l'on oublie de les monter
