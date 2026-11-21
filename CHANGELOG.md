@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 2.1.1
+- Python 3.15 (image Alpine) et dépendances à jour (FastAPI, Uvicorn, httpx, AsyncSSH).
+- Correctifs de sécurité Alpine appliqués à chaque construction de l'image.
+- Actions GitHub mises à jour ; tests exécutés avec la même version de Python que l'image.
+
 ## 2.1.0
 - Mises à jour par versions numérotées : le bandeau affiche les nouveautés de chaque version, et l'on peut revenir à une version précise (retour arrière).
 - Tests automatiques (escalade, maintenance, alertes, sauvegardes, API) lancés à chaque modification.
