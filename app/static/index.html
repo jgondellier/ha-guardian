@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f1115">
+  <title>HA Guardian</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>🛡️ HA Guardian <span class="badge" id="versionBadge"></span></h1>
+    <div class="header-actions">
+      <span class="meta" id="lastCheck">—</span>
+      <button class="small" id="btnCheck">Vérifier</button>
+      <button class="small" id="btnLogout">Déconnexion</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Nouvelle version de HA Guardian -->
+    <div class="banner update" id="updateBanner" hidden>
+      <span class="big-icon">⬆️</span>
+      <div class="grow">
+        <div class="big">Nouvelle version de HA Guardian disponible</div>
+        <details id="updateDetails"><summary id="updateSummary"></summary><ul id="updateCommits"></ul></details>
+      </div>
+      <button class="primary" id="btnAppUpdate">Mettre à jour</button>
+    </div>
+
+    <div class="banner" id="banner">
+      <span class="dot lg" id="bannerDot"></span>
+      <div class="grow">
+        <div class="big" id="bannerTitle">Chargement…</div>
+        <div class="meta" id="bannerSub"></div>
+      </div>
+    </div>
+
+    <div class="tiles" id="tiles"></div>
+
+    <section class="panel">
+      <h2>Disponibilité de Home Assistant</h2>
+      <div class="uptime">
+        <div><small>24 heures</small><b id="up24">—</b></div>
+        <div><small>7 jours</small><b id="up7">—</b></div>
+        <div class="push">
+          <button class="small seg" data-hours="24">24 h</button>
+          <button class="small seg" data-hours="168">7 j</button>
+        </div>
+      </div>
+      <div class="timeline" id="timeline"></div>
+      <div class="timeline-legend"><span id="tlStart"></span><span>maintenant</span></div>
+    </section>
+
+    <div class="grid2">
+      <section class="panel">
+        <h2>Chien de garde</h2>
+        <label class="switch">
+          <input type="checkbox" id="wdToggle">
+          <span class="track"></span>
+          <span id="wdLabel">Interventions automatiques</span>
+        </label>
+        <div class="maint" id="maint">
+          <span id="maintText">Maintenance :</span>
+          <button class="small" data-maint="60">Pause 1 h</button>
+          <button class="small" data-maint="240">Pause 4 h</button>
+          <button class="small" data-maint="0" id="btnMaintEnd" hidden>Reprendre</button>
+        </div>
+        <ul class="ladder" id="ladder"></ul>
+        <div class="kv" id="wdInfo"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Actions</h2>
+        <div id="actions"></div>
+      </section>
+    </div>
+
+    <div class="grid2">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Mises à jour Home Assistant</h2>
+          <button class="small" id="btnHaUpdRefresh">Actualiser</button>
+        </div>
+        <div id="haUpdates" class="list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Sauvegardes sur le NAS</h2>
+          <button class="small" id="btnBackup">Sauvegarder maintenant</button>
+        </div>
+        <div class="kv" id="backupInfo"></div>
+        <div id="backupList" class="list"></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2>Journal</h2>
+      <div class="log" id="log"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Réglages</h2>
+      <form id="settingsForm" class="settings-wrap">
+        <fieldset>
+          <legend>Chien de garde (en nombre d'échecs consécutifs)</legend>
+          <div class="settings">
+            <label>Alerte après<input type="number" min="1" name="notify_after"></label>
+            <label>Palier 1 — redémarrer HA Core (SSH) / réveil WoL<input type="number" min="1" name="fail_core_restart"></label>
+            <label>Palier 2 — redémarrer le mini-PC (SSH)<input type="number" min="1" name="fail_host_reboot"></label>
+            <label>Palier 3 — couper la prise<input type="number" min="1" name="fail_power_cycle"></label>
+            <label>Délai entre deux actions (min)<input type="number" min="0" name="cooldown_minutes"></label>
+            <label>Grâce après redémarrage (min)<input type="number" min="0" name="boot_grace_minutes"></label>
+            <label>Coupures max. par 24 h<input type="number" min="0" name="max_power_cycles_per_day"></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Détection</legend>
+          <div class="settings">
+            <label>2e contrôle avant de compter un échec (s)<input type="number" min="0" name="retry_seconds"></label>
+            <label>HA considéré lent au-delà de (ms)<input type="number" min="100" name="slow_ms"></label>
+            <label>Alerte disque au-delà de (%)<input type="number" min="1" max="100" name="disk_alert_percent"></label>
+            <label>Alerte température au-delà de (°C)<input type="number" min="1" name="temp_alert_celsius"></label>
+            <label class="wide"><span>Capteurs témoins (un <code>entity_id</code> par ligne, ex. un capteur Zigbee qui remonte souvent)</span>
+              <textarea name="sentinel_entities" rows="3" placeholder="sensor.salon_temperature&#10;binary_sensor.porte_entree"></textarea></label>
+            <label>Muet au-delà de (min)<input type="number" min="1" name="sentinel_max_minutes"></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Sauvegardes</legend>
+          <div class="settings">
+            <label class="check"><input type="checkbox" name="backup_enabled"> Sauvegarde automatique quotidienne</label>
+            <label>Heure<input type="number" min="0" max="23" name="backup_hour"></label>
+            <label>Nombre conservé sur le NAS<input type="number" min="1" name="backup_keep"></label>
+            <label>Alerte si plus ancienne que (h)<input type="number" min="1" name="backup_max_age_hours"></label>
+            <label class="check"><input type="checkbox" name="backup_delete_remote"> Supprimer la copie sur le mini-PC après transfert</label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Rapport hebdomadaire</legend>
+          <div class="settings">
+            <label class="check"><input type="checkbox" name="report_enabled"> Envoyer un rapport chaque semaine</label>
+            <label>Jour
+              <select name="report_day">
+                <option value="0">Lundi</option><option value="1">Mardi</option><option value="2">Mercredi</option>
+                <option value="3">Jeudi</option><option value="4">Vendredi</option><option value="5">Samedi</option>
+                <option value="6">Dimanche</option>
+              </select></label>
+            <label>Heure<input type="number" min="0" max="23" name="report_hour"></label>
+          </div>
+        </fieldset>
+        <div class="form-actions">
+          <button class="primary" type="submit">Enregistrer</button>
+          <button type="button" id="btnTestNotif">Tester les alertes</button>
+          <button type="button" id="btnReport">Envoyer le rapport maintenant</button>
+        </div>
+      </form>
+
+      <details>
+        <summary>SSH : clé du NAS et empreinte du mini-PC</summary>
+        <p class="kv">Colle cette clé dans <code>authorized_keys</code> de l'add-on SSH de Home Assistant :</p>
+        <textarea class="key" id="sshKey" rows="3" readonly></textarea>
+        <div class="form-actions">
+          <button class="small" id="btnCopyKey" type="button">Copier la clé</button>
+          <button class="small danger" id="btnResetFp" type="button">Réinitialiser l'empreinte</button>
+        </div>
+        <p class="kv" id="sshInfo"></p>
+      </details>
+      <details>
+        <summary>Informations</summary>
+        <p class="kv" id="infoBox"></p>
+      </details>
+    </section>
+  </main>
+
+  <dialog id="confirm">
+    <div id="confirmText"></div>
+    <div class="row">
+      <button id="confirmNo">Annuler</button>
+      <button class="primary" id="confirmYes">Confirmer</button>
+    </div>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

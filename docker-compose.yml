@@ -1,0 +1,39 @@
+# HA Guardian — déploiement sur Synology (DSM 7.1 : lancer avec « sudo docker-compose up -d »)
+version: "3.5"
+
+services:
+  ha-guardian:
+    image: ghcr.io/jgondellier/ha-guardian:latest
+    # Pour construire l'image sur le NAS à la place : décommenter la ligne suivante
+    # build: .
+    container_name: ha-guardian
+    restart: unless-stopped
+    # Réseau de l'hôte : nécessaire au Wake-on-LAN et au ping
+    network_mode: host
+    env_file: .env
+    environment:
+      - TZ=Europe/Paris
+    volumes:
+      - ./data:/data
+      - ${BACKUP_PATH:-./backups}:/backups
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  # Service compagnon qui remplace le conteneur ci-dessus par la nouvelle image
+  # quand on clique sur « Mettre à jour » dans l'interface.
+  watchtower:
+    # Version 1.7.1 compatible avec le Docker 20.10 de DSM 7.1.
+    # Si un jour tu passes à Docker 29 ou plus : remplacer par nickfedor/watchtower
+    image: containrrr/watchtower:1.7.1
+    container_name: ha-guardian-watchtower
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Paris
+      - WATCHTOWER_HTTP_API_UPDATE=true
+      - WATCHTOWER_HTTP_API_TOKEN=${UPDATE_TOKEN}
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_CLEANUP=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:8090:8080"
