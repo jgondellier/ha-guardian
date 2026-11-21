@@ -14,7 +14,7 @@ LABEL org.opencontainers.image.source="https://github.com/jgondellier/ha-guardia
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}"
 
-RUN apk add --no-cache iputils tzdata
+RUN apk upgrade --no-cache && apk add --no-cache iputils tzdata
 
 WORKDIR /srv
 COPY requirements.txt .
