@@ -1,7 +1,7 @@
-# Base Debian « bullseye » volontairement : le Docker 20.10.3 de DSM 7.1
-# bloque l'appel système clone3 utilisé par les images plus récentes (bookworm),
-# ce qui empêche Python de créer des threads.
-FROM python:3.11-slim-bullseye
+# Base Alpine (musl) volontairement : le Docker 20.10.3 de DSM 7.1 bloque l'appel
+# système clone3 qu'utilisent les glibc récentes (Debian bookworm et suivantes),
+# ce qui empêcherait Python de créer des threads. musl n'utilise pas clone3.
+FROM python:3.12-alpine
 
 ARG APP_VERSION=dev
 ARG GIT_SHA=dev
@@ -14,9 +14,7 @@ LABEL org.opencontainers.image.source="https://github.com/jgondellier/ha-guardia
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}"
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends iputils-ping tzdata \
- && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache iputils tzdata
 
 WORKDIR /srv
 COPY requirements.txt .

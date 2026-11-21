@@ -98,6 +98,6 @@ Chaque modification poussée sur la branche `main` déclenche la construction de
 ## Dépannage
 
 - **Journaux** : `sudo docker logs -f ha-guardian` et `sudo docker logs ha-guardian-watchtower`.
-- **`can't start new thread`** : ajouter `security_opt: [seccomp:unconfined]` au service `ha-guardian`.
+- **`can't start new thread`** (ne devrait pas arriver avec l'image Alpine) : ajouter `security_opt: [seccomp:unconfined]` au service `ha-guardian`.
 - **« Watchtower injoignable »** : vérifier que le conteneur `ha-guardian-watchtower` tourne et que `UPDATE_TOKEN` est rempli dans `.env`, puis relancer `sudo docker-compose up -d`.
 - **Construire localement sans GitHub** : dans `docker-compose.yml`, décommenter `build: .`, puis lancer `sudo docker-compose up -d --build`.
