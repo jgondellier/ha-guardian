@@ -21,6 +21,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 
+# Données persistantes : toujours sur un volume, même si l'on oublie de les monter
+# (indispensable avec un système de fichiers en lecture seule)
+VOLUME ["/data", "/backups"]
+
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT','8099'), timeout=4)"
 
