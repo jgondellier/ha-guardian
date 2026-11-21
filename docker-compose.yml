@@ -3,6 +3,8 @@ version: "3.5"
 
 services:
   ha-guardian:
+    # « latest » = dernière version publiée. Pour revenir à une version précise
+    # (retour arrière), remplacer par exemple par :2.0.0 puis « docker-compose up -d ».
     image: ghcr.io/jgondellier/ha-guardian:latest
     # Pour construire l'image sur le NAS à la place : décommenter la ligne suivante
     # build: .
@@ -16,6 +18,12 @@ services:
     volumes:
       - ./data:/data
       - ${BACKUP_PATH:-./backups}:/backups
+    # Durcissement : système de fichiers de l'image en lecture seule
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
     labels:
       - com.centurylinklabs.watchtower.enable=true
 
@@ -35,5 +43,8 @@ services:
       - WATCHTOWER_CLEANUP=true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - no-new-privileges:true
+    # API joignable uniquement depuis le NAS lui-même
     ports:
       - "127.0.0.1:8090:8080"

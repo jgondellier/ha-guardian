@@ -1,49 +1,167 @@
 name: Image Docker
 
+# - Pull request : tests + construction + test de démarrage + scan (rien n'est publié)
+# - Push sur main : idem, puis publication de l'image « edge »
+# - Push sur main avec un nouveau numéro dans VERSION : publication de « latest »
+#   et de la version, attestation de provenance, et création de la release GitHub.
+#   C'est la release qui fait apparaître le bouton « Mettre à jour » sur le NAS.
+
 on:
   push:
     branches: [main]
-    paths-ignore: ["**.md"]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/ha-guardian
 
 jobs:
-  build:
+  tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Dépendances
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Syntaxe JavaScript
+        run: node --check app/static/app.js
+      - name: Tests
+        run: python -m pytest -v
 
-      - name: Contrôle de syntaxe
-        run: |
-          python -m py_compile app/*.py
-          node --check app/static/app.js
+  image:
+    needs: tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # création du tag et de la release
+      packages: write        # publication sur ghcr.io
+      id-token: write        # attestation de provenance
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Version
         id: v
-        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION=$(tr -d ' \n' < VERSION)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "push" ] && ! git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Nouvelle version à publier : $VERSION"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Construction (locale)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: ha-guardian:ci
+          build-args: |
+            APP_VERSION=${{ steps.v.outputs.version }}
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test de démarrage (mêmes options que sur le NAS)
+        run: |
+          docker run -d --name smoke --read-only --tmpfs /tmp \
+            --security-opt no-new-privileges:true -p 8099:8099 \
+            -e APP_PASSWORD=ci -e HA_URL=http://127.0.0.1:9 -e SSH_ENABLED=false \
+            ha-guardian:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8099/healthz; then echo; break; fi
+            sleep 1
+          done
+          docker logs smoke
+          curl -fsS http://127.0.0.1:8099/healthz | grep -q '"${{ steps.v.outputs.version }}"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8099/api/status)" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8099/login)" = "200"
+          docker rm -f smoke
+
+      - name: Scan des vulnérabilités (bloquant sur CRITICAL)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" aquasec/trivy:latest \
+            image --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL --no-progress ha-guardian:ci
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" aquasec/trivy:latest \
+            image --scanners vuln --ignore-unfixed --severity CRITICAL --exit-code 1 --no-progress --quiet ha-guardian:ci
+
+      - name: Connexion à ghcr.io
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v6
+      - name: Étiquettes
+        if: github.event_name == 'push'
+        id: tags
+        run: |
+          {
+            echo "list<<EOF"
+            echo "$IMAGE:edge"
+            echo "$IMAGE:sha-${{ github.sha }}"
+            if [ "${{ steps.v.outputs.release }}" = "true" ]; then
+              echo "$IMAGE:latest"
+              echo "$IMAGE:${{ steps.v.outputs.version }}"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publication
+        if: github.event_name == 'push'
+        id: push
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
+          tags: ${{ steps.tags.outputs.list }}
           build-args: |
             APP_VERSION=${{ steps.v.outputs.version }}
             GIT_SHA=${{ github.sha }}
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/ha-guardian:latest
-            ghcr.io/${{ github.repository_owner }}/ha-guardian:${{ steps.v.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/ha-guardian:sha-${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+
+      - name: Attestation de provenance (signature)
+        if: github.event_name == 'push'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Release GitHub
+        if: steps.v.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          # Notes = section « ## VERSION » du CHANGELOG
+          awk -v v="$VERSION" '
+            $0 ~ "^## " { if (found) exit; if ($2 == v) { found=1; next } }
+            found { print }' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "Version $VERSION" > notes.md
+          {
+            echo
+            echo "Image : \`$IMAGE:$VERSION\` (digest \`${{ steps.push.outputs.digest }}\`)"
+          } >> notes.md
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md

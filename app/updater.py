@@ -1,5 +1,10 @@
-"""Détection des nouvelles versions sur GitHub et mise à jour via Watchtower."""
+"""Détection des nouvelles versions publiées sur GitHub et mise à jour via Watchtower.
+
+Une version = une « release » GitHub (v2.1.0…), créée automatiquement quand le
+fichier VERSION change sur main. L'image `latest` ne suit que ces versions.
+"""
 import logging
+import re
 import time
 
 import httpx
@@ -8,14 +13,12 @@ from . import config, db, notify
 
 log = logging.getLogger("guardian.updater")
 
-WORKFLOW = "docker.yml"
-
 state: dict = {
     "version": config.APP_VERSION,
     "sha": config.GIT_SHA,
-    "latest_sha": None,
+    "latest_version": None,
     "available": False,
-    "commits": [],
+    "releases": [],      # versions plus récentes que celle en cours, avec leurs notes
     "checked": None,
     "error": None,
     "updating": False,
@@ -24,51 +27,64 @@ state: dict = {
 }
 
 
-def _headers() -> dict:
-    h = {"Accept": "application/vnd.github+json"}
+def parse_version(value: str | None) -> tuple:
+    """« v2.10.1 » -> (2, 10, 1) ; valeur non numérique -> ()."""
+    m = re.match(r"^v?(\d+(?:\.\d+)*)", (value or "").strip())
+    return tuple(int(x) for x in m.group(1).split(".")) if m else ()
+
+
+def is_newer(candidate: str | None, current: str | None) -> bool:
+    c, cur = parse_version(candidate), parse_version(current)
+    return bool(c) and bool(cur) and c > cur
+
+
+def _client() -> httpx.AsyncClient:
+    headers = {"Accept": "application/vnd.github+json"}
     if config.GITHUB_TOKEN:
-        h["Authorization"] = f"Bearer {config.GITHUB_TOKEN}"
-    return h
+        headers["Authorization"] = f"Bearer {config.GITHUB_TOKEN}"
+    return httpx.AsyncClient(timeout=15, headers=headers)
+
+
+def _notes(body: str | None) -> list[str]:
+    lines = []
+    for line in (body or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("**Full Changelog"):
+            continue
+        lines.append(re.sub(r"^[-*]\s+", "", line)[:200])
+    return lines[:15]
 
 
 async def check() -> dict:
-    """Compare la version en cours à la dernière image construite avec succès."""
     state["checked"] = time.time()
     if not config.GITHUB_REPO:
         state["error"] = "GITHUB_REPO non défini"
         return state
     try:
-        async with httpx.AsyncClient(timeout=15, headers=_headers()) as client:
-            r = await client.get(
-                f"https://api.github.com/repos/{config.GITHUB_REPO}/actions/workflows/"
-                f"{WORKFLOW}/runs",
-                params={"branch": "main", "status": "success", "per_page": 1},
-            )
+        async with _client() as client:
+            r = await client.get(f"https://api.github.com/repos/{config.GITHUB_REPO}/releases",
+                                 params={"per_page": 20})
             r.raise_for_status()
-            runs = r.json().get("workflow_runs", [])
-            if not runs:
-                state.update(error="Aucune image construite pour l'instant", available=False)
-                return state
-            latest = runs[0]["head_sha"]
-            state["latest_sha"] = latest
-            state["error"] = None
-            if config.GIT_SHA in ("", "dev"):
-                state.update(available=False, commits=[],
-                             error="Version construite localement : mise à jour non suivie")
-                return state
-            state["available"] = latest != config.GIT_SHA
-            state["commits"] = []
-            if state["available"]:
-                c = await client.get(
-                    f"https://api.github.com/repos/{config.GITHUB_REPO}/compare/"
-                    f"{config.GIT_SHA}...{latest}")
-                if c.status_code == 200:
-                    state["commits"] = [
-                        {"sha": x["sha"][:7],
-                         "message": x["commit"]["message"].splitlines()[0][:140],
-                         "date": x["commit"]["committer"]["date"]}
-                        for x in reversed(c.json().get("commits", [])[-20:])
-                    ]
+        releases = [x for x in r.json() if not x.get("draft") and not x.get("prerelease")]
+        if not releases:
+            state.update(error="Aucune version publiée pour l'instant", available=False,
+                         latest_version=None, releases=[])
+            return state
+        releases.sort(key=lambda x: parse_version(x["tag_name"]), reverse=True)
+        latest = releases[0]["tag_name"].lstrip("v")
+        state["latest_version"] = latest
+        state["error"] = None
+        if not parse_version(config.APP_VERSION):
+            state.update(available=False, releases=[],
+                         error="Version construite localement : mise à jour non suivie")
+            return state
+        newer = [x for x in releases if is_newer(x["tag_name"], config.APP_VERSION)]
+        state["available"] = bool(newer)
+        state["releases"] = [
+            {"version": x["tag_name"].lstrip("v"), "date": x.get("published_at"),
+             "url": x.get("html_url"), "notes": _notes(x.get("body"))}
+            for x in newer
+        ]
     except httpx.HTTPStatusError as exc:
         code = exc.response.status_code
         state["error"] = ("Dépôt introuvable ou privé (définir GITHUB_TOKEN)" if code == 404
@@ -85,16 +101,15 @@ async def trigger() -> None:
         raise RuntimeError("UPDATE_TOKEN non défini dans .env")
     state["updating"] = True
     db.add_event("action", f"Mise à jour de HA Guardian demandée "
-                           f"({config.GIT_SHA[:7]} → {(state['latest_sha'] or '?')[:7]})")
+                           f"(v{config.APP_VERSION} → v{state['latest_version'] or '?'})")
     try:
         async with httpx.AsyncClient(timeout=900) as client:
             r = await client.get(f"{config.UPDATE_URL}/v1/update",
                                  headers={"Authorization": f"Bearer {config.UPDATE_TOKEN}"})
         if r.status_code == 401:
             raise RuntimeError("Watchtower refuse le jeton (UPDATE_TOKEN différent ?)")
-        # Si on arrive ici, aucune nouvelle image n'a été trouvée par Watchtower
-        db.add_event("info", "Watchtower n'a pas trouvé de nouvelle image "
-                             "(construction GitHub peut-être encore en cours)")
+        db.add_event("info", "Watchtower n'a pas trouvé de nouvelle image. Si l'image est "
+                             "épinglée sur une version dans docker-compose.yml, remets « latest ».")
     except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ReadTimeout):
         pass  # normal : le conteneur est en train d'être remplacé
     except httpx.ConnectError as exc:
@@ -107,9 +122,10 @@ async def trigger() -> None:
 
 async def on_startup() -> None:
     """Journalise un changement de version depuis le dernier démarrage."""
-    previous = db.kv_get("running_sha")
-    if previous and previous != config.GIT_SHA:
-        msg = f"HA Guardian mis à jour : v{config.APP_VERSION} ({config.GIT_SHA[:7]})"
+    previous = db.kv_get("running_version")
+    current = f"{config.APP_VERSION} ({config.GIT_SHA[:7]})"
+    if previous and previous != current:
+        msg = f"HA Guardian : v{previous} → v{current}"
         db.add_event("ok", msg)
         await notify.send("⬆️ HA Guardian mis à jour", msg)
-    db.kv_set("running_sha", config.GIT_SHA)
+    db.kv_set("running_version", current)

@@ -35,6 +35,18 @@ def latest_age_hours() -> float | None:
     return None if not files else (time.time() - files[0]["mtime"]) / 3600
 
 
+def pick_remote_file(files: list[dict], slug: str | None, start: float) -> dict | None:
+    """Choisit l'archive créée : celle qui porte le slug, sinon la plus récente
+    apparue depuis le lancement de la sauvegarde."""
+    tars = [f for f in files if f["name"].endswith(".tar")]
+    if slug:
+        match = [f for f in tars if slug in f["name"]]
+        if match:
+            return match[0]
+    recent = [f for f in tars if f["mtime"] >= start - 120]
+    return max(recent, key=lambda f: f["mtime"]) if recent else None
+
+
 def _prune(keep: int) -> int:
     removed = 0
     for f in list_local()[max(1, keep):]:
@@ -64,15 +76,8 @@ async def run(origin: str = "manuel") -> str:
                 pass
 
             state["step"] = "Recherche du fichier"
-            files = [f for f in await devices.sftp_list("/backup") if f["name"].endswith(".tar")]
-            match = [f for f in files if slug and slug in f["name"]]
-            recent = [f for f in files if f["mtime"] >= start - 120]
-            if match:
-                chosen = match[0]
-            elif recent:
-                chosen = max(recent, key=lambda f: f["mtime"])
-            else:
-                chosen = None
+            files = await devices.sftp_list("/backup")
+            chosen = pick_remote_file(files, slug, start)
             if not chosen:
                 raise RuntimeError("Fichier de sauvegarde introuvable dans /backup")
 

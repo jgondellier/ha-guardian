@@ -82,18 +82,39 @@ Redémarre l'add-on. À la première connexion, l'empreinte du mini-PC est mémo
 
 ## Mise à jour de HA Guardian
 
-Chaque modification poussée sur la branche `main` déclenche la construction de l'image `ghcr.io/jgondellier/ha-guardian` par GitHub Actions. Ensuite, dans l'interface (vérification toutes les 6 h ou avec le bouton *Vérifier*) :
+Une **version** est publiée quand le numéro du fichier `VERSION` change sur `main`. GitHub Actions :
+1. lance les tests ;
+2. construit l'image et la démarre pour vérifier qu'elle répond ;
+3. l'analyse avec Trivy (une faille critique bloque la publication) ;
+4. publie `ghcr.io/jgondellier/ha-guardian:latest` et `:X.Y.Z`, avec une attestation de provenance signée ;
+5. crée la release GitHub avec les notes du `CHANGELOG.md`.
 
-1. Un bandeau **« Nouvelle version disponible »** apparaît, avec la liste des changements.
-2. Clique sur **Mettre à jour** : Watchtower télécharge l'image et recrée le conteneur.
-3. La page se recharge toute seule. L'historique, les réglages et la clé SSH sont conservés.
+Ensuite, dans l'interface (vérification toutes les 6 h ou avec le bouton *Vérifier*), un bandeau **« Nouvelle version disponible »** liste les nouveautés. Clique sur **Mettre à jour** : Watchtower télécharge l'image et recrée le conteneur, puis la page se recharge. L'historique, les réglages et la clé SSH sont conservés.
+
+Les modifications poussées sans changer `VERSION` ne produisent qu'une image `edge`, jamais proposée à la mise à jour.
+
+**Revenir à une version précédente** : dans `docker-compose.yml`, remplace `:latest` par la version voulue (par exemple `:2.0.0`), puis lance `sudo docker-compose up -d`. Remets `:latest` pour suivre à nouveau les mises à jour.
+
+**Vérifier qu'une image vient bien de ce dépôt** (depuis un poste avec la CLI GitHub) :
+```sh
+gh attestation verify oci://ghcr.io/jgondellier/ha-guardian:latest --owner jgondellier
+```
 
 > Le paquet GHCR doit être **public** pour que le NAS le télécharge sans authentification : sur GitHub, ouvre *Packages* > *ha-guardian* > *Package settings* > *Change visibility*.
+
+## Développement
+
+```sh
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest
+```
 
 ## Sécurité
 
 - Ne publie pas le port 8099 sur Internet : pour un accès à distance, passe par un VPN.
 - `.env` contient le jeton HA et n'est jamais envoyé sur GitHub (voir `.gitignore`).
+- Les conteneurs tournent avec un système de fichiers en lecture seule et sans élévation de privilèges.
+- Watchtower a accès au Docker du NAS (c'est nécessaire pour remplacer le conteneur). Son API n'écoute que sur le NAS lui-même et exige `UPDATE_TOKEN`. La principale protection reste donc ton compte GitHub : active la double authentification.
 
 ## Dépannage
 

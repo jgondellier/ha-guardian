@@ -1,5 +1,13 @@
 # Historique des versions
 
+## 2.1.0
+- Mises à jour par versions numérotées : le bandeau affiche les nouveautés de chaque version, et l'on peut revenir à une version précise (retour arrière).
+- Tests automatiques (escalade, maintenance, alertes, sauvegardes, API) lancés à chaque modification.
+- Chaque image est testée au démarrage puis analysée (Trivy) avant publication ; une faille critique bloque la publication.
+- Attestation de provenance signée pour chaque image publiée.
+- Conteneurs durcis : système de fichiers en lecture seule, pas d'élévation de privilèges.
+- Dependabot et analyse CodeQL activés sur le dépôt.
+
 ## 2.0.0
 - Mode maintenance (pause 1 h / 4 h), activé aussi automatiquement pendant les mises à jour HA.
 - Double contrôle avant de compter un échec ; état « lent » au-delà d'un seuil de latence.

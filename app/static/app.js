@@ -208,10 +208,10 @@ function renderAppUpdate(s) {
   const show = a.available && a.enabled;
   $('updateBanner').hidden = !show && !a.updating && !updating;
   if (!show) return;
-  $('updateSummary').textContent = a.commits.length
-    ? `${a.commits.length} changement(s) — voir le détail` : 'Voir le détail';
-  $('updateCommits').innerHTML = a.commits.map((c) =>
-    `<li>${esc(c.message)} <span class="muted">(${esc(c.sha)})</span></li>`).join('');
+  $('updateSummary').textContent = `v${a.version} → v${a.latest_version} — voir les nouveautés`;
+  $('updateCommits').innerHTML = a.releases.map((r) =>
+    `<li><b>v${esc(r.version)}</b>${r.date ? ` <span class="muted">(${esc(new Date(r.date).toLocaleDateString('fr-FR'))})</span>` : ''}
+      ${r.notes.length ? `<ul>${r.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}</li>`).join('');
   $('btnAppUpdate').disabled = a.updating || updating;
   $('btnAppUpdate').textContent = (a.updating || updating) ? 'Mise à jour…' : 'Mettre à jour';
 }
