@@ -18,7 +18,11 @@ RUN apk upgrade --no-cache && apk add --no-cache iputils tzdata
 
 WORKDIR /srv
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# pip et setuptools ne servent qu'à l'installation : on les retire de l'image finale
+# (ils embarquent leurs propres bibliothèques, parfois vulnérables)
+RUN pip install --no-cache-dir -r requirements.txt \
+ && pip uninstall -y pip setuptools wheel 2>/dev/null; \
+    rm -rf /usr/local/lib/python3*/ensurepip
 COPY app ./app
 
 # Données persistantes : toujours sur un volume, même si l'on oublie de les monter
