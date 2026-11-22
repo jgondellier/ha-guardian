@@ -7,7 +7,7 @@ Surveillance et intervention sur **Home Assistant** depuis un **NAS Synology** (
 - **Mode maintenance** (pause 1 h / 4 h), activé automatiquement pendant les mises à jour.
 - **Sauvegardes** HA quotidiennes copiées sur le NAS, avec rotation, téléchargement et alerte si elles sont trop anciennes.
 - **Mises à jour HA** visibles dans l'interface et installées après une sauvegarde.
-- **Alertes** ntfy / Telegram, **boutons d'action** dans les notifications ntfy, **rapport hebdomadaire**, **signal de vie** (healthchecks.io).
+- **Alertes** ntfy / Telegram, **rappels** tant qu'une panne dure, **boutons d'action** dans les notifications ntfy, **rapport hebdomadaire**, **signal de vie** (healthchecks.io).
 - **Mise à jour en un clic** de HA Guardian depuis GitHub.
 
 ---
@@ -68,6 +68,7 @@ Redémarre l'add-on. À la première connexion, l'empreinte du mini-PC est mémo
 | Palier | Action | Par défaut |
 |---|---|---|
 | Alerte | notification (avec boutons) | 2 échecs (~2 min) |
+| Rappel | nouvelle notification tant que la panne dure (durée, actions déjà tentées) | toutes les 30 min |
 | 1 | Wake-on-LAN si le PC est injoignable, sinon `ha core restart` | 3 échecs |
 | 2 | `ha host reboot` | 6 échecs |
 | 3 | coupure de la prise | 10 échecs |

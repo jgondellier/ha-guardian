@@ -15,6 +15,7 @@ state: dict = {
     "consecutive_failures": 0,
     "incident_since": None,
     "incident_steps_done": [],
+    "last_alert_ts": None,  # dernière notification de panne (alerte ou rappel)
     "last_action_ts": 0.0,
     "last_action": None,
     "grace_until": 0.0,
@@ -185,6 +186,25 @@ async def _run_checks(settings: dict) -> None:
                     recovered="SLZB-06 de nouveau joignable")
 
 
+def _reminder_due(s: dict, fails: int, now: float) -> bool:
+    """Rappel tant que la panne dure. Si l'alerte initiale a été retenue (maintenance),
+    le premier rappel part dès que le délai est écoulé depuis le début de la panne."""
+    if s["remind_minutes"] <= 0 or fails <= s["notify_after"]:
+        return False
+    last = state["last_alert_ts"] or state["incident_since"]
+    return now - last >= s["remind_minutes"] * 60
+
+
+def _reminder_text(fails: int, now: float, host_ok: bool) -> str:
+    minutes = int((now - state["incident_since"]) / 60)
+    duration = f"{minutes // 60} h {minutes % 60:02d}" if minutes >= 60 else f"{minutes} min"
+    done = [ACTIONS[k][0] for k in state["incident_steps_done"] if k in ACTIONS]
+    return (f"En panne depuis {duration} ({fails} échecs, {state['ha'].get('error')}). "
+            f"Mini-PC joignable : {'oui' if host_ok else 'non'}. "
+            + (f"Déjà tenté : {', '.join(done)}." if done
+               else "Aucune action automatique lancée."))
+
+
 async def _evaluate(settings: dict) -> None:
     s = settings
     ha_ok = state["ha"]["ok"]
@@ -198,7 +218,8 @@ async def _evaluate(settings: dict) -> None:
             if state["consecutive_failures"] >= s["notify_after"] and not in_maintenance:
                 await notify.send("✅ Home Assistant rétabli",
                                   f"De nouveau joignable après ~{duration} min.")
-        state.update(consecutive_failures=0, incident_since=None, incident_steps_done=[])
+        state.update(consecutive_failures=0, incident_since=None, incident_steps_done=[],
+                     last_alert_ts=None)
         return
 
     state["consecutive_failures"] += 1
@@ -211,19 +232,24 @@ async def _evaluate(settings: dict) -> None:
         return
 
     host_ok = state["host"]["ok"]
+    buttons = []
+    if config.SSH_ENABLED and host_ok:
+        buttons.append("ssh_core_restart")
+    if config.WOL_ENABLED and not host_ok:
+        buttons.append("wol")
+    if config.PLUG_ENABLED:
+        buttons.append("plug_cycle")
+    buttons.append("maintenance_60")
     if fails == s["notify_after"]:
-        buttons = []
-        if config.SSH_ENABLED and host_ok:
-            buttons.append("ssh_core_restart")
-        if config.WOL_ENABLED and not host_ok:
-            buttons.append("wol")
-        if config.PLUG_ENABLED:
-            buttons.append("plug_cycle")
-        buttons.append("maintenance_60")
+        state["last_alert_ts"] = now
         await notify.send("⚠️ Home Assistant ne répond pas",
                           f"{fails} échecs consécutifs ({state['ha'].get('error')}). "
                           f"Mini-PC joignable : {'oui' if host_ok else 'non'}.",
                           priority=4, actions=buttons)
+    elif _reminder_due(s, fails, now):
+        state["last_alert_ts"] = now
+        await notify.send("⏰ Home Assistant toujours injoignable",
+                          _reminder_text(fails, now, host_ok), priority=4, actions=buttons)
 
     if not s["watchdog_enabled"]:
         return
