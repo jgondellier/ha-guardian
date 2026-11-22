@@ -66,7 +66,8 @@ async def run(origin: str = "manuel") -> str:
             config.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
             status, out, err = await devices.ssh_exec(
-                f'ha backups new --name "HA Guardian {stamp}" --raw-json', timeout=3600)
+                devices.ha_cli(f'backups new --name "HA Guardian {stamp}" --raw-json'),
+                timeout=3600)
             if status not in (0, None):
                 raise RuntimeError(f"ha backups new : {(out + err).strip()[:300]}")
             slug = None
@@ -90,7 +91,7 @@ async def run(origin: str = "manuel") -> str:
             settings = db.get_settings()
             if settings["backup_delete_remote"] and slug:
                 state["step"] = "Suppression de la copie sur le mini-PC"
-                await devices.ssh_run(f"ha backups remove {slug}", timeout=120)
+                await devices.ssh_run(devices.ha_cli(f"backups remove {slug}"), timeout=120)
             removed = _prune(settings["backup_keep"])
 
             duration = int(time.time() - start)
