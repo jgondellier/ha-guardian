@@ -1,0 +1,7 @@
+# Propriétaire obligatoire pour la relecture (si la règle de branche l'exige).
+# La chaîne de publication et les fichiers de déploiement ne changent jamais
+# sans relecture humaine : ils décident de ce que le NAS installe.
+/.github/              @jgondellier
+/Dockerfile            @jgondellier
+/docker-compose.yml    @jgondellier
+/requirements.txt      @jgondellier
