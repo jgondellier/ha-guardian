@@ -7,7 +7,7 @@ from datetime import datetime
 
 import httpx
 
-from . import backups, config, db, devices, notify, updater, watchdog
+from . import backups, config, db, devices, health, network, notify, updater, watchdog
 
 log = logging.getLogger("guardian.tasks")
 
@@ -59,6 +59,13 @@ async def refresh_system(settings: dict) -> None:
             "disk", disk >= settings["disk_alert_percent"], "💾 Disque du mini-PC presque plein",
             f"{disk} % utilisés ({stats.get('disk_free_gb')} Go libres).",
             recovered="Espace disque du mini-PC revenu à la normale")
+    size = stats.get("db_mb")
+    if size is not None and settings["db_alert_mb"] > 0:
+        await watchdog.alert(
+            "db_size", size >= settings["db_alert_mb"], "🗃️ Base de HA volumineuse",
+            f"{size} Mo. Réduire la durée d'historique (recorder: purge_keep_days) ou "
+            "exclure des entités bavardes.", recovered="Taille de la base de HA revenue sous le seuil",
+            priority=3)
     temp = stats.get("temp_c")
     if temp is not None:
         await watchdog.alert(
@@ -143,6 +150,23 @@ async def weekly_report(settings: dict, force: bool = False) -> str:
     if sysinfo.get("disk_percent") is not None:
         lines.append(f"Disque : {sysinfo['disk_percent']} % · RAM : {sysinfo.get('mem_percent', '?')} %"
                      + (f" · {sysinfo['temp_c']} °C" if sysinfo.get("temp_c") else ""))
+    bat = health.state.get("batteries") or {}
+    if bat.get("low"):
+        lines.append("Batteries à changer : " + ", ".join(
+            b["name"] + (f" ({b['level']} %)" if b["level"] is not None else "") for b in bat["low"][:8]))
+    if bat.get("unavailable"):
+        lines.append(f"Appareils à batterie injoignables : {len(bat['unavailable'])}")
+    stopped = [a["name"] for a in (health.state.get("apps") or []) if a["state"] != "started"]
+    if stopped:
+        lines.append("Apps arrêtées : " + ", ".join(stopped[:8]))
+    if health.state.get("integrations"):
+        lines.append("Intégrations en échec : " + ", ".join(e["title"] for e in health.state["integrations"]))
+    asus = network.state.get("asus") or {}
+    if asus.get("nodes"):
+        off = [n["name"] for n in asus["nodes"] if not n["online"]]
+        lines.append(f"AiMesh : {len(asus['nodes']) - len(off)}/{len(asus['nodes'])} nœuds en ligne"
+                     + (f" (hors ligne : {', '.join(off)})" if off else "")
+                     + (f", {asus['clients']} appareils connectés" if asus.get("clients") is not None else ""))
     if ha_updates["items"]:
         lines.append(f"Mises à jour HA en attente : {len(ha_updates['items'])}")
     if updater.state.get("available"):
@@ -163,6 +187,10 @@ async def loop() -> None:
             jobs.append(heartbeat())
         if _due("system", config.SYSTEM_INTERVAL):
             jobs.append(refresh_system(settings))
+        if _due("health", config.SYSTEM_INTERVAL):
+            jobs.append(health.refresh(settings))
+        if _due("asus", config.SYSTEM_INTERVAL):
+            jobs.append(network.refresh_asus())
         if _due("ha_updates", 1800):
             jobs.append(refresh_ha_updates())
         if _due("schedule", 60):

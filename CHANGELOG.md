@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 2.2.0
+- Santé de Home Assistant : état des apps (ex add-ons), alerte si l'une s'arrête et redémarrage automatique optionnel (limité, respecte la maintenance).
+- Intégrations en échec et réparations proposées par HA, nombre d'erreurs dans le journal (alerte en cas de pic), taille de la base de données.
+- Batteries faibles et appareils à batterie injoignables, dans l'interface et le rapport hebdomadaire.
+- Réseau : surveillance des équipements (ping, port ou URL) et des routeurs Asus AiMesh (nœuds, charge, appareils connectés).
+- Si un équipement critique (routeur principal) tombe, aucune intervention n'est faite sur Home Assistant : la panne vient du réseau.
+
 ## 2.1.1
 - Python 3.15 (image Alpine) et dépendances à jour (FastAPI, Uvicorn, httpx, AsyncSSH).
 - Correctifs de sécurité Alpine appliqués à chaque construction de l'image ; pip et setuptools retirés de l'image finale (plus aucune faille connue de gravité haute ou critique).

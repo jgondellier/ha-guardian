@@ -13,6 +13,8 @@ CHANGELOG et README sont en français.** Les noms de code (variables, fonctions)
 - `app/watchdog.py` : boucle de contrôle, escalade par paliers, mode maintenance, alertes dédoublonnées (`alert()`), registre `ACTIONS`.
 - `app/tasks.py` : tâches planifiées (santé du mini-PC, sauvegardes, rapport hebdo, signal de vie, mises à jour HA, vérification de version).
 - `app/devices.py` : tout ce qui touche l'extérieur (API HA, SSH/SFTP avec asyncssh, ping, WoL, prise Shelly/Tasmota, SLZB-06).
+- `app/health.py` : santé de HA (apps via SSH `ha addons`/`ha apps` — renommées en 2026.2 —, intégrations et réparations via WebSocket, journal `/api/error_log`, batteries).
+- `app/network.py` : équipements réseau (ping/port/URL, « critique » bloque l'escalade) et API non officielle des routeurs Asus (`login.cgi` + `appGet.cgi`, formats variables : parser défensivement).
 - `app/backups.py`, `app/updater.py`, `app/notify.py`, `app/db.py` (SQLite : checks, events, settings, kv), `app/config.py` (variables d'environnement, lues **à l'import**).
 - `app/static/` : HTML/CSS/JS sans framework ni étape de build. Toujours échapper les données avec `esc()` avant `innerHTML`.
 

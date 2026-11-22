@@ -216,6 +216,84 @@ function renderAppUpdate(s) {
   $('btnAppUpdate').textContent = (a.updating || updating) ? 'Mise à jour…' : 'Mettre à jour';
 }
 
+const APP_STATES = { started: 'démarrée', stopped: 'arrêtée', error: 'en erreur', unknown: 'inconnu' };
+
+function renderHealth(s) {
+  const h = s.health || {};
+  const rows = [];
+  if (!h.checked && !h.apps) { $('healthBox').innerHTML = '<div class="empty">Pas encore vérifié (toutes les 5 min, si HA répond)</div>'; return; }
+  if (h.apps) {
+    const down = h.apps.filter((a) => a.state !== 'started');
+    rows.push(`<div class="row"><span class="dot ${down.length ? 'warn' : 'ok'}"></span><div class="grow"><b>Apps</b>
+      <div class="muted">${h.apps.length - down.length} / ${h.apps.length} démarrées${down.length
+        ? ' · ' + down.map((a) => `${esc(a.name)} (${esc(APP_STATES[a.state] || a.state)})`).join(', ') : ''}</div></div></div>`);
+  } else if (h.apps_error) {
+    rows.push(`<div class="row"><span class="dot"></span><div class="grow"><b>Apps</b><div class="muted">${esc(h.apps_error)}</div></div></div>`);
+  }
+  if (h.integrations) {
+    rows.push(`<div class="row"><span class="dot ${h.integrations.length ? 'bad' : 'ok'}"></span><div class="grow"><b>Intégrations</b>
+      <div class="muted">${h.integrations.length ? h.integrations.map((e) => `${esc(e.title)} (${esc(e.state)})`).join(', ') : 'toutes chargées'}</div></div></div>`);
+  }
+  if (h.repairs) {
+    rows.push(`<div class="row"><span class="dot ${h.repairs.length ? 'warn' : 'ok'}"></span><div class="grow"><b>Réparations proposées par HA</b>
+      <div class="muted">${h.repairs.length ? h.repairs.slice(0, 6).map((r) => `${esc(r.domain)} : ${esc(r.key)}`).join(' · ') : 'aucune'}</div></div></div>`);
+  }
+  if (h.ws_error) rows.push(`<div class="row"><span class="dot"></span><div class="grow"><b>Intégrations / réparations</b><div class="muted">${esc(h.ws_error)}</div></div></div>`);
+  const lg = h.log;
+  if (lg && !lg.error) {
+    const lim = settings ? settings.settings.log_errors_per_hour : 30;
+    rows.push(`<div class="row"><span class="dot ${lg.errors_hour >= lim && lim > 0 ? 'warn' : 'ok'}"></span><div class="grow"><b>Journal (dernière heure)</b>
+      <div class="muted">${lg.errors_hour} erreur(s), ${lg.warnings_hour} avertissement(s)${lg.top_sources.length
+        ? ' · ' + lg.top_sources.slice(0, 3).map(([n, c]) => `${esc(n)} (${c})`).join(', ') : ''}</div></div></div>`);
+  } else if (lg && lg.error) {
+    rows.push(`<div class="row"><span class="dot"></span><div class="grow"><b>Journal</b><div class="muted">${esc(lg.error)}</div></div></div>`);
+  }
+  const sys = s.system || {};
+  if (sys.db_mb != null) {
+    const lim = settings ? settings.settings.db_alert_mb : 3000;
+    rows.push(`<div class="row"><span class="dot ${lim > 0 && sys.db_mb >= lim ? 'warn' : 'ok'}"></span><div class="grow"><b>Base de données</b>
+      <div class="muted">${sys.db_mb} Mo</div></div></div>`);
+  }
+  $('healthBox').innerHTML = rows.join('') || '<div class="empty">Aucune information</div>';
+}
+
+function renderBatteries(s) {
+  const b = (s.health || {}).batteries;
+  if (!b) { $('batteryBox').innerHTML = '<div class="empty">Pas encore vérifié</div>'; return; }
+  const rows = b.low.map((x) => `<div class="row"><span class="dot ${x.level != null && x.level <= 5 ? 'bad' : 'warn'}"></span>
+    <div class="grow">${esc(x.name)}</div><b>${x.level != null ? x.level + ' %' : 'faible'}</b></div>`);
+  if (b.unavailable.length) {
+    rows.push(`<div class="row"><span class="dot"></span><div class="grow"><b>Injoignables (${b.unavailable.length})</b>
+      <div class="muted">${b.unavailable.slice(0, 12).map((x) => esc(x.name)).join(', ')}${b.unavailable.length > 12 ? '…' : ''}</div></div></div>`);
+  }
+  $('batteryBox').innerHTML = rows.join('') || '<div class="empty">✔︎ Aucune batterie faible</div>';
+}
+
+function renderNetwork(s) {
+  const n = s.network || { devices: [] };
+  $('netTiles').innerHTML = n.devices.length
+    ? n.devices.map((d) => tile(d.name + (d.critical ? ' ★' : ''), d.ok, d.ok ? 'Joignable' : 'Injoignable',
+        `${d.host} · ${d.how}${d.ok && d.latency_ms != null ? ' · ' + d.latency_ms + ' ms' : ''}${!d.ok ? ` · ${d.fails} échec(s)` : ''}`)).join('')
+    : '<div class="empty">Aucun équipement déclaré (Réglages > Réseau)</div>';
+  const a = n.asus;
+  if (!n.asus_enabled) { $('asusBox').innerHTML = ''; return; }
+  if (!a) { $('asusBox').innerHTML = '<div class="kv">Routeur Asus : première lecture dans quelques minutes…</div>'; return; }
+  if (a.error) { $('asusBox').innerHTML = `<div class="kv">Routeur Asus : <span style="color:var(--bad)">${esc(a.error)}</span> (${ago(a.ts)})</div>`; return; }
+  const facts = [
+    a.model ? `<b>${esc(a.model)}</b>` : null,
+    a.firmware ? `firmware ${esc(a.firmware)}` : null,
+    a.uptime_s != null ? `allumé depuis ${duration(a.uptime_s)}` : null,
+    a.cpu_percent != null ? `CPU ${a.cpu_percent} %` : null,
+    a.mem_percent != null ? `RAM ${a.mem_percent} %` : null,
+    a.clients != null ? `${a.clients} appareils connectés` : null,
+  ].filter(Boolean).join(' · ');
+  const nodes = a.nodes.map((x) => `<div class="row"><span class="dot ${x.online ? 'ok' : 'bad'}"></span>
+    <div class="grow">${esc(x.name)}<div class="muted">${esc([x.model, x.ip, x.firmware].filter(Boolean).join(' · '))}</div></div>
+    <b>${x.online ? 'En ligne' : 'Hors ligne'}</b></div>`).join('');
+  $('asusBox').innerHTML = `<div class="kv">Routeur Asus : ${facts} · lu ${ago(a.ts)}</div>
+    <div class="group-title">Nœuds AiMesh</div><div class="list">${nodes || '<div class="empty">Aucun nœud trouvé</div>'}</div>`;
+}
+
 function renderStatus(s) {
   lastStatus = s;
   $('lastCheck').textContent = s.last_check ? `Contrôle ${ago(s.last_check)}` : 'Premier contrôle…';
@@ -227,6 +305,9 @@ function renderStatus(s) {
   renderHaUpdates(s);
   renderBackupState(s);
   renderAppUpdate(s);
+  renderHealth(s);
+  renderBatteries(s);
+  renderNetwork(s);
 }
 
 // ================================================================== timeline / journal
@@ -380,6 +461,7 @@ async function loadSettings() {
     `Notifications : <b>${settings.notifications ? 'configurées' : 'non configurées'}</b>${settings.notification_buttons ? ' (avec boutons d’action)' : ''}`,
     `Signal de vie : <b>${settings.heartbeat ? 'actif' : 'non configuré'}</b>`,
     `Wake-on-LAN : <b>${settings.wol ? 'configuré' : 'non configuré'}</b>`,
+    `Routeur Asus : <b>${settings.asus ? 'configuré' : 'non configuré'}</b>`,
     `Dossier des sauvegardes : <code>${esc(settings.backup_dir)}</code>`,
   ].join('<br>');
   if (lastStatus) renderStatus(lastStatus);

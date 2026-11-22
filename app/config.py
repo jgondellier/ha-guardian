@@ -62,6 +62,12 @@ PLUG_PASSWORD = _env("PLUG_PASSWORD")
 PLUG_CHANNEL = _int("PLUG_CHANNEL", 0)
 PLUG_OFF_SECONDS = _int("PLUG_OFF_SECONDS", 15)
 
+# --- Routeur Asus principal (optionnel) : état des nœuds AiMesh ---
+ASUS_URL = _env("ASUS_URL").rstrip("/")
+ASUS_USER = _env("ASUS_USER")
+ASUS_PASSWORD = _env("ASUS_PASSWORD")
+ASUS_ENABLED = bool(ASUS_URL and ASUS_USER and ASUS_PASSWORD)
+
 # --- Notifications (optionnelles) ---
 NTFY_SERVER = _env("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
 NTFY_TOPIC = _env("NTFY_TOPIC")

@@ -35,6 +35,16 @@ DEFAULT_SETTINGS = {
     "backup_keep": 14,
     "backup_delete_remote": False,
     "backup_max_age_hours": 48,
+    # Santé de Home Assistant
+    "app_autorestart": False,       # redémarrer une app (ex add-on) arrêtée de façon inattendue
+    "app_max_restarts_per_day": 3,
+    "log_errors_per_hour": 30,      # alerte au-delà de ce nombre d'erreurs dans le journal HA
+    "db_alert_mb": 3000,            # alerte si la base de HA dépasse cette taille
+    # Batteries
+    "battery_alert_percent": 15,
+    # Réseau : un équipement par ligne « Nom ; hôte [; port ou URL] [; critique] »
+    "network_devices": "",
+    "network_fail_after": 3,
     # Rapport hebdomadaire
     "report_enabled": True,
     "report_day": 0,                # 0 = lundi
