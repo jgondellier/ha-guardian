@@ -75,6 +75,22 @@ Redémarre l'add-on. À la première connexion, l'empreinte du mini-PC est mémo
 
 ---
 
+## Réseau et routeurs Asus AiMesh
+
+Dans *Réglages* > **Réseau**, déclare un équipement par ligne : `Nom ; adresse IP [; port ou URL] [; critique]`.
+
+```
+Routeur principal ; 192.168.1.1 ; critique
+Routeur étage (AiMesh) ; 192.168.1.2
+```
+
+- Chaque équipement est contrôlé à chaque cycle (ping, port TCP ou page web). Une alerte part après N échecs consécutifs.
+- **critique** : si cet équipement ne répond plus, HA Guardian considère que la panne vient du réseau et **n'intervient pas** sur Home Assistant. Ça évite de couper le mini-PC pour rien.
+- Pour plus de détails sur le maillage, renseigne `ASUS_URL`, `ASUS_USER` et `ASUS_PASSWORD` dans `.env`. Le routeur principal est alors interrogé toutes les 5 min : modèle, firmware, CPU, RAM, nombre d'appareils et **état de chaque nœud AiMesh**, avec une alerte si un nœud se déconnecte.
+
+> Les routeurs Asus n'acceptent qu'une session d'administration à la fois : la lecture peut déconnecter l'interface web si elle est ouverte au même moment. Cette API n'est pas officielle et son format varie selon les firmwares. Si la lecture échoue, le ping continue de fonctionner.
+> Sécurité : désactive l'accès à l'administration du routeur depuis Internet (*Administration* > *Système* > *Enable Web Access from WAN* = Non) et garde le firmware à jour.
+
 ## Options utiles
 
 - **Boutons dans les notifications ntfy** : renseigner `PUBLIC_URL` avec une adresse joignable depuis le téléphone, par exemple via le VPN Server de DSM ou Tailscale. Les liens sont signés et valables 12 h.

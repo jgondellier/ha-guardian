@@ -4,6 +4,7 @@ import json
 import logging
 import shlex
 import socket
+import ssl
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -131,12 +132,14 @@ async def sftp_get(remote: str, local: Path) -> None:
 _SYS_CMD = (
     "sh -lc 'ha host info --raw-json 2>/dev/null; echo @@; cat /proc/meminfo; echo @@; "
     "cat /proc/loadavg; echo @@; cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null; "
-    "echo @@; nproc; echo @@; cat /proc/uptime'"
+    "echo @@; nproc; echo @@; cat /proc/uptime; echo @@; "
+    "stat -c %s /config/home-assistant_v2.db 2>/dev/null || "
+    "stat -c %s /homeassistant/home-assistant_v2.db 2>/dev/null'"
 )
 
 
 def parse_system(output: str) -> dict:
-    parts = (output.split("@@") + [""] * 6)[:6]
+    parts = (output.split("@@") + [""] * 7)[:7]
     res: dict = {}
     try:
         data = json.loads(parts[0].strip()).get("data", {})
@@ -173,6 +176,9 @@ def parse_system(output: str) -> dict:
         res["uptime_s"] = int(float(parts[5].split()[0]))
     except (IndexError, ValueError):
         pass
+    db_size = parts[6].strip().split()
+    if db_size and db_size[0].isdigit():
+        res["db_mb"] = round(int(db_size[0]) / 1048576)
     return res
 
 
@@ -226,7 +232,16 @@ def _ha_headers() -> dict:
 
 
 def _ha_client(timeout: float = 10) -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=timeout, verify=False, headers=_ha_headers())
+    return httpx.AsyncClient(timeout=timeout, verify=ha_tls_context(), headers=_ha_headers())
+
+
+def ha_tls_context() -> ssl.SSLContext:
+    """Contexte TLS pour HA (API REST et WebSocket), selon HA_VERIFY_TLS."""
+    ctx = ssl.create_default_context()
+    if not config.HA_VERIFY_TLS:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
 async def check_ha() -> dict:
@@ -249,6 +264,15 @@ async def check_ha() -> dict:
     except Exception as exc:  # noqa: BLE001
         result["error"] = type(exc).__name__
     return result
+
+
+async def ha_error_log() -> str:
+    async with _ha_client(20) as client:
+        r = await client.get(f"{config.HA_URL}/api/error_log")
+    if r.status_code == 404:
+        raise RuntimeError("Journal indisponible via l'API (HA trop récent ou trop ancien)")
+    r.raise_for_status()
+    return r.text[-2_000_000:]
 
 
 async def ha_states() -> list[dict]:

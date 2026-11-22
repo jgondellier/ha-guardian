@@ -41,6 +41,9 @@ SECRET_KEY = _secret_file.read_text().strip()
 # --- Home Assistant ---
 HA_URL = _env("HA_URL", "http://192.168.1.10:8123").rstrip("/")
 HA_TOKEN = _env("HA_TOKEN")
+# Vérifier le certificat si HA_URL est en https. Désactivé par défaut : HA est souvent
+# joint par son IP avec un certificat émis pour un nom de domaine (ou auto-signé).
+HA_VERIFY_TLS = _bool("HA_VERIFY_TLS", False)
 HA_HOST = _env("HA_HOST") or (urlparse(HA_URL).hostname or "")
 HA_MAC = _env("HA_MAC")                          # pour le Wake-on-LAN
 WOL_BROADCAST = _env("WOL_BROADCAST", "255.255.255.255")
@@ -61,6 +64,14 @@ PLUG_USER = _env("PLUG_USER")
 PLUG_PASSWORD = _env("PLUG_PASSWORD")
 PLUG_CHANNEL = _int("PLUG_CHANNEL", 0)
 PLUG_OFF_SECONDS = _int("PLUG_OFF_SECONDS", 15)
+
+# --- Routeur Asus principal (optionnel) : état des nœuds AiMesh ---
+ASUS_URL = _env("ASUS_URL").rstrip("/")
+ASUS_USER = _env("ASUS_USER")
+ASUS_PASSWORD = _env("ASUS_PASSWORD")
+# Certificat du routeur vérifié si ASUS_URL est en https (le mot de passe y transite)
+ASUS_VERIFY_TLS = _bool("ASUS_VERIFY_TLS", True)
+ASUS_ENABLED = bool(ASUS_URL and ASUS_USER and ASUS_PASSWORD)
 
 # --- Notifications (optionnelles) ---
 NTFY_SERVER = _env("NTFY_SERVER", "https://ntfy.sh").rstrip("/")

@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import backups, config, db, devices, notify, tasks, updater, watchdog
+from . import backups, config, db, devices, health, network, notify, tasks, updater, watchdog
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("guardian")
@@ -151,6 +151,9 @@ async def status():
         "backup": {**backups.state, "enabled": settings["backup_enabled"]},
         "ha_updates": tasks.ha_updates,
         "app": updater.state,
+        "health": health.state,
+        "network": {"devices": network.state["devices"], "asus": network.state["asus"],
+                    "asus_enabled": config.ASUS_ENABLED},
     }
 
 
@@ -311,6 +314,7 @@ async def get_settings():
         "heartbeat": bool(config.HEARTBEAT_URL),
         "plug": config.PLUG_TYPE if config.PLUG_ENABLED else None,
         "wol": config.WOL_ENABLED,
+        "asus": config.ASUS_ENABLED,
         "backup_dir": str(config.BACKUP_DIR),
         "version": {"version": config.APP_VERSION, "sha": config.GIT_SHA,
                     "repo": config.GITHUB_REPO},

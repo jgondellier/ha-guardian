@@ -1,7 +1,7 @@
 """Escalade par paliers, maintenance, garde-fous et alertes."""
 import time
 
-from app import db, watchdog
+from app import db, network, watchdog
 from conftest import run
 
 
@@ -154,3 +154,16 @@ def test_alertes_envoyees_une_seule_fois(env):
 def test_liste_des_capteurs_temoins():
     s = dict(db.DEFAULT_SETTINGS, sentinel_entities="sensor.a\n  binary_sensor.b , \nnimportequoi\n")
     assert watchdog._sentinel_list(s) == ["sensor.a", "binary_sensor.b"]
+
+
+def test_panne_du_routeur_principal_aucune_intervention(env):
+    network.state["devices"] = [{"name": "Routeur", "critical": True, "ok": False}]
+    simulate(12)
+    assert actions(env) == []
+    assert not any("ne répond pas" in c[1] for c in env if c[0] == "notify")
+
+
+def test_equipement_non_critique_ne_bloque_pas(env):
+    network.state["devices"] = [{"name": "Imprimante", "critical": False, "ok": False}]
+    simulate(12)
+    assert actions(env) == ["ssh_core_restart", "ssh_host_reboot", "plug_cycle"]

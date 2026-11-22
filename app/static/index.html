@@ -54,6 +54,23 @@
 
     <div class="grid2">
       <section class="panel">
+        <h2>Santé de Home Assistant</h2>
+        <div id="healthBox" class="list"><div class="empty">Pas encore vérifié</div></div>
+      </section>
+      <section class="panel">
+        <h2>Batteries</h2>
+        <div id="batteryBox" class="list"><div class="empty">Pas encore vérifié</div></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2>Réseau</h2>
+      <div class="tiles" id="netTiles"></div>
+      <div id="asusBox"></div>
+    </section>
+
+    <div class="grid2">
+      <section class="panel">
         <h2>Chien de garde</h2>
         <label class="switch">
           <input type="checkbox" id="wdToggle">
@@ -126,6 +143,25 @@
             <label class="wide"><span>Capteurs témoins (un <code>entity_id</code> par ligne, ex. un capteur Zigbee qui remonte souvent)</span>
               <textarea name="sentinel_entities" rows="3" placeholder="sensor.salon_temperature&#10;binary_sensor.porte_entree"></textarea></label>
             <label>Muet au-delà de (min)<input type="number" min="1" name="sentinel_max_minutes"></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Santé de Home Assistant</legend>
+          <div class="settings">
+            <label class="check"><input type="checkbox" name="app_autorestart"> Redémarrer automatiquement une app arrêtée (si elle est en démarrage automatique)</label>
+            <label>Redémarrages max. par app et par 24 h<input type="number" min="0" name="app_max_restarts_per_day"></label>
+            <label>Alerte au-delà de N erreurs par heure dans le journal<input type="number" min="0" name="log_errors_per_hour"></label>
+            <label>Alerte si la base dépasse (Mo)<input type="number" min="0" name="db_alert_mb"></label>
+            <label>Batterie faible en dessous de (%)<input type="number" min="1" max="100" name="battery_alert_percent"></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Réseau</legend>
+          <div class="settings">
+            <label class="wide"><span>Équipements à surveiller, un par ligne : <code>Nom ; adresse IP [; port ou URL] [; critique]</code>.
+              « critique » = indispensable au réseau (routeur principal) : s'il tombe, aucune intervention n'est faite sur Home Assistant.</span>
+              <textarea name="network_devices" rows="4" placeholder="Routeur principal ; 192.168.1.1 ; critique&#10;Routeur étage (AiMesh) ; 192.168.1.2&#10;Imprimante ; 192.168.1.50 ; 631"></textarea></label>
+            <label>Alerte après N échecs consécutifs<input type="number" min="1" name="network_fail_after"></label>
           </div>
         </fieldset>
         <fieldset>

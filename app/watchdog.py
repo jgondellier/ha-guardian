@@ -3,7 +3,7 @@ import asyncio
 import logging
 import time
 
-from . import config, db, devices, notify
+from . import config, db, devices, network, notify
 
 log = logging.getLogger("guardian.watchdog")
 
@@ -146,9 +146,9 @@ def _sentinel_list(settings: dict) -> list[str]:
 async def _run_checks(settings: dict) -> None:
     ssh_coro = (devices.tcp_open(config.HA_HOST, config.SSH_PORT) if config.SSH_ENABLED
                 else asyncio.sleep(0, result=None))
-    ha, host_ping, ssh_open, slzb, plug = await asyncio.gather(
+    ha, host_ping, ssh_open, slzb, plug, _net = await asyncio.gather(
         devices.check_ha(), devices.ping(config.HA_HOST), ssh_coro,
-        devices.check_slzb(), devices.plug_status(),
+        devices.check_slzb(), devices.plug_status(), network.check_all(settings),
     )
     # Double contrôle : on confirme un échec avant de le compter
     if not ha["ok"] and settings["retry_seconds"] > 0:
@@ -180,6 +180,7 @@ async def _run_checks(settings: dict) -> None:
                           + (f" ({s['age_min']} min)" if s.get("age_min") is not None else "")
                           for s in bad) + " — réseau Zigbee à vérifier",
                 recovered="Les capteurs témoins donnent de nouveau signe de vie")
+    await network.alerts(settings)
     if slzb is not None:
         await alert("slzb", not slzb["ok"], "📡 SLZB-06 injoignable",
                     "Le coordinateur Zigbee ne répond plus.",
@@ -229,6 +230,18 @@ async def _evaluate(settings: dict) -> None:
         db.add_event("warn", f"Home Assistant ne répond pas : {state['ha'].get('error')}"
                      + (" (mode maintenance)" if in_maintenance else ""))
     if in_maintenance:
+        return
+
+    # Si un équipement réseau critique (routeur principal) est en panne, le problème
+    # vient du réseau : redémarrer HA ou couper le mini-PC n'y changerait rien.
+    # Le compteur repart de zéro pour que l'escalade reprenne normalement ensuite.
+    net_down = network.critical_down()
+    if net_down:
+        state["consecutive_failures"] = 0
+        if "network" not in state["incident_steps_done"]:
+            state["incident_steps_done"].append("network")
+            db.add_event("warn", "Panne réseau (" + ", ".join(net_down) + ") : "
+                         "aucune intervention sur Home Assistant")
         return
 
     host_ok = state["host"]["ok"]
