@@ -25,6 +25,14 @@ def test_analyse_sortie_vide_ou_erreur():
     assert devices.parse_system("") == {}
 
 
+def test_commande_ha_dans_un_shell_de_connexion():
+    # Sans shell de connexion, l'add-on SSH ne charge pas SUPERVISOR_TOKEN.
+    assert devices.ha_cli("core restart") == "sh -lc 'ha core restart'"
+    cmd = devices.ha_cli('backups new --name "HA Guardian 2026-11-22 22:30" --raw-json')
+    assert cmd == """sh -lc 'ha backups new --name "HA Guardian 2026-11-22 22:30" --raw-json'"""
+    assert devices._SYS_CMD.startswith("sh -lc ")
+
+
 def test_lien_de_notification_signe():
     url = notify.hook_url("plug_cycle")
     q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))

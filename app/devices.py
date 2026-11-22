@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import shlex
 import socket
 import time
 from datetime import datetime, timezone
@@ -83,6 +84,13 @@ async def _connect():
         raise RuntimeError("Clé SSH refusée : colle la clé du NAS dans l'add-on SSH") from exc
 
 
+def ha_cli(args: str) -> str:
+    """Commande `ha` à lancer par SSH. Elle passe par un shell de connexion (`sh -l`)
+    pour charger SUPERVISOR_TOKEN depuis /etc/profile.d de l'add-on SSH : sans lui,
+    une commande envoyée directement est refusée (« missing or invalid API token »)."""
+    return "sh -lc " + shlex.quote(f"ha {args}")
+
+
 async def ssh_exec(command: str, timeout: int = 240) -> tuple[int | None, str, str]:
     conn = await _connect()
     async with conn:
@@ -121,7 +129,7 @@ async def sftp_get(remote: str, local: Path) -> None:
 
 # ---------------------------------------------------------------- santé du mini-PC
 _SYS_CMD = (
-    "sh -c 'ha host info --raw-json 2>/dev/null; echo @@; cat /proc/meminfo; echo @@; "
+    "sh -lc 'ha host info --raw-json 2>/dev/null; echo @@; cat /proc/meminfo; echo @@; "
     "cat /proc/loadavg; echo @@; cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null; "
     "echo @@; nproc; echo @@; cat /proc/uptime'"
 )

@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 2.1.2
+- Correctif : les commandes `ha` lancées par SSH (sauvegarde avant mise à jour, sauvegardes, redémarrage de HA Core ou du mini-PC, disque dans la santé du mini-PC) passent par un shell de connexion. Elles étaient refusées par le Supervisor (« missing or invalid API token ») car le jeton de l'add-on SSH n'était pas chargé.
+
 ## 2.1.1
 - Python 3.15 (image Alpine) et dépendances à jour (FastAPI, Uvicorn, httpx, AsyncSSH).
 - Correctifs de sécurité Alpine appliqués à chaque construction de l'image ; pip et setuptools retirés de l'image finale (plus aucune faille connue de gravité haute ou critique).
