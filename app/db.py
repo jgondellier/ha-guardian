@@ -16,6 +16,7 @@ DEFAULT_SETTINGS = {
     # Chien de garde
     "watchdog_enabled": False,
     "notify_after": 2,
+    "remind_minutes": 30,           # rappel pendant une panne (0 = jamais)
     "fail_core_restart": 3,
     "fail_host_reboot": 6,
     "fail_power_cycle": 10,

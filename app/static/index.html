@@ -124,6 +124,7 @@
           <legend>Chien de garde (en nombre d'échecs consécutifs)</legend>
           <div class="settings">
             <label>Alerte après<input type="number" min="1" name="notify_after"></label>
+            <label>Rappel pendant une panne, toutes les (min, 0 = jamais)<input type="number" min="0" name="remind_minutes"></label>
             <label>Palier 1 — redémarrer HA Core (SSH) / réveil WoL<input type="number" min="1" name="fail_core_restart"></label>
             <label>Palier 2 — redémarrer le mini-PC (SSH)<input type="number" min="1" name="fail_host_reboot"></label>
             <label>Palier 3 — couper la prise<input type="number" min="1" name="fail_power_cycle"></label>

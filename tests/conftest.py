@@ -37,7 +37,7 @@ def env(monkeypatch):
         for table in ("checks", "events", "settings", "kv"):
             db._conn.execute(f"DELETE FROM {table}")
     watchdog.state.update(
-        consecutive_failures=0, incident_since=None, incident_steps_done=[],
+        consecutive_failures=0, incident_since=None, incident_steps_done=[], last_alert_ts=None,
         last_action_ts=0.0, last_action=None, grace_until=0.0, busy=None, alerts={},
     )
     network.state["devices"] = []

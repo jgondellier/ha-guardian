@@ -1,11 +1,19 @@
 # Historique des versions
 
-## 2.2.0
+## 2.3.0
 - Santé de Home Assistant : état des apps (ex add-ons), alerte si l'une s'arrête et redémarrage automatique optionnel (limité, respecte la maintenance).
 - Intégrations en échec et réparations proposées par HA, nombre d'erreurs dans le journal (alerte en cas de pic), taille de la base de données.
 - Batteries faibles et appareils à batterie injoignables, dans l'interface et le rapport hebdomadaire.
 - Réseau : surveillance des équipements (ping, port ou URL) et des routeurs Asus AiMesh (nœuds, charge, appareils connectés).
 - Si un équipement critique (routeur principal) tombe, aucune intervention n'est faite sur Home Assistant : la panne vient du réseau.
+- Certificats TLS vérifiés pour les équipements surveillés par URL (un certificat auto-signé compte comme « joignable ») et pour le routeur Asus (`ASUS_VERIFY_TLS`). Nouveau réglage `HA_VERIFY_TLS` (désactivé par défaut, comportement inchangé) pour vérifier le certificat de HA en https.
+
+## 2.2.0
+- Rappels pendant une panne : tant que Home Assistant reste injoignable, une nouvelle notification part toutes les 30 min (réglable, 0 pour désactiver), avec la durée de la panne, les actions déjà tentées et les boutons d'action.
+- Si l'alerte initiale a été retenue par le mode maintenance, un rappel part une fois la maintenance terminée si la panne continue.
+
+## 2.1.2
+- Correctif : les commandes `ha` lancées par SSH (sauvegarde avant mise à jour, sauvegardes, redémarrage de HA Core ou du mini-PC, disque dans la santé du mini-PC) passent par un shell de connexion. Elles étaient refusées par le Supervisor (« missing or invalid API token ») car le jeton de l'add-on SSH n'était pas chargé.
 
 ## 2.1.1
 - Python 3.15 (image Alpine) et dépendances à jour (FastAPI, Uvicorn, httpx, AsyncSSH).
