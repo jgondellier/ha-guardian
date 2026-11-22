@@ -134,3 +134,29 @@ def test_lecture_routeur_asus():
 
 def test_json_asus_avec_virgules_en_trop():
     assert network._lenient_json('{"a": [1, 2,], "b": {"c": 1,},}') == {"a": [1, 2], "b": {"c": 1}}
+
+
+def test_certificat_non_reconnu_compte_comme_joignable():
+    import ssl
+
+    import httpx
+
+    from app import network
+    try:
+        try:
+            raise ssl.SSLCertVerificationError("self-signed certificate")
+        except ssl.SSLError as inner:
+            raise httpx.ConnectError("échec TLS") from inner
+    except httpx.ConnectError as exc:
+        assert network._cert_error(exc)
+    assert not network._cert_error(httpx.ConnectError("Connection refused"))
+
+
+def test_contexte_tls_de_ha(monkeypatch):
+    import ssl
+
+    from app import config, devices
+    monkeypatch.setattr(config, "HA_VERIFY_TLS", True)
+    assert devices.ha_tls_context().verify_mode == ssl.CERT_REQUIRED
+    monkeypatch.setattr(config, "HA_VERIFY_TLS", False)
+    assert devices.ha_tls_context().verify_mode == ssl.CERT_NONE

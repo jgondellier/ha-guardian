@@ -4,6 +4,7 @@ import base64
 import json
 import logging
 import re
+import ssl
 import time
 
 import httpx
@@ -58,9 +59,14 @@ async def check_device(dev: dict) -> dict:
     start = time.perf_counter()
     if dev["url"]:
         try:
-            async with httpx.AsyncClient(timeout=6, verify=False) as client:
+            async with httpx.AsyncClient(timeout=6) as client:
                 r = await client.get(dev["url"])
             ok, how = r.status_code < 500, f"HTTP {r.status_code}"
+        except httpx.ConnectError as exc:
+            # Certificat non reconnu (auto-signé, courant sur le réseau local) : l'équipement
+            # répond, ce qui suffit pour un contrôle de présence. Rien n'est envoyé.
+            ok = _cert_error(exc)
+            how = "HTTPS (certificat non reconnu)" if ok else type(exc).__name__
         except Exception as exc:  # noqa: BLE001
             ok, how = False, type(exc).__name__
     elif dev["port"]:
@@ -69,6 +75,14 @@ async def check_device(dev: dict) -> dict:
         ok, how = await devices.ping(dev["host"]), "ping"
     return {**dev, "ok": ok, "how": how,
             "latency_ms": round((time.perf_counter() - start) * 1000) if ok else None}
+
+
+def _cert_error(exc: BaseException) -> bool:
+    while exc is not None:
+        if isinstance(exc, ssl.SSLCertVerificationError):
+            return True
+        exc = exc.__cause__ or exc.__context__
+    return False
 
 
 async def check_all(settings: dict) -> list[dict]:
@@ -188,7 +202,7 @@ def parse_asus(data: dict, prev_cpu: dict | None = None) -> dict:
 
 async def asus_fetch() -> dict:
     auth = base64.b64encode(f"{config.ASUS_USER}:{config.ASUS_PASSWORD}".encode()).decode()
-    async with httpx.AsyncClient(timeout=12, verify=False,
+    async with httpx.AsyncClient(timeout=12, verify=config.ASUS_VERIFY_TLS,
                                  headers={"User-Agent": ASUS_UA}) as client:
         r = await client.post(f"{config.ASUS_URL}/login.cgi",
                               data={"login_authorization": auth},

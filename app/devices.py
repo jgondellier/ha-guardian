@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import socket
+import ssl
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -223,7 +224,16 @@ def _ha_headers() -> dict:
 
 
 def _ha_client(timeout: float = 10) -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=timeout, verify=False, headers=_ha_headers())
+    return httpx.AsyncClient(timeout=timeout, verify=ha_tls_context(), headers=_ha_headers())
+
+
+def ha_tls_context() -> ssl.SSLContext:
+    """Contexte TLS pour HA (API REST et WebSocket), selon HA_VERIFY_TLS."""
+    ctx = ssl.create_default_context()
+    if not config.HA_VERIFY_TLS:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
 async def check_ha() -> dict:

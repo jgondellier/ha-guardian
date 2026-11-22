@@ -225,12 +225,7 @@ async def ws_query(commands: list[str]) -> list:
     import websockets  # import local : seul ce module en a besoin
 
     url = re.sub(r"^http", "ws", config.HA_URL) + "/api/websocket"
-    ssl_ctx = None
-    if url.startswith("wss"):
-        import ssl
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
+    ssl_ctx = devices.ha_tls_context() if url.startswith("wss") else None
     async with websockets.connect(url, ssl=ssl_ctx, open_timeout=10, max_size=2**23) as ws:
         await asyncio.wait_for(ws.recv(), 10)                       # auth_required
         await ws.send(json.dumps({"type": "auth", "access_token": config.HA_TOKEN}))
