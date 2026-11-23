@@ -22,6 +22,15 @@ CHANGELOG et README sont en français.** Les noms de code (variables, fonctions)
 Réglages modifiables dans l'interface : `db.DEFAULT_SETTINGS` (le type de la valeur par défaut fixe le type accepté).
 Configuration du déploiement : variables d'environnement (`.env.example`, à tenir à jour avec `config.py`).
 
+## Déploiement
+
+- **Deux machines distinctes** : HA Guardian tourne sur le NAS Synology (Docker, `docker-compose.yml`) ;
+  Home Assistant tourne sur un mini-PC séparé, joint par le réseau (API, SSH, ping, WoL, prise).
+- Interface sur le port **8099** du NAS. Accès depuis Internet uniquement via le proxy inversé
+  HTTPS de DSM (`https://haguardian.<domaine>` → `http://localhost:8099`, `FORWARDED_ALLOW_IPS=127.0.0.1`),
+  jamais en ouvrant le port 8099. Le domaine réel reste dans `.env` (`PUBLIC_URL`) : le dépôt est public.
+- Mise à jour : Watchtower tire `latest` ; le bandeau « Nouvelle version » de l'interface s'appuie sur les releases.
+
 ## Commandes
 
 ```sh
