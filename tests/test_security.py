@@ -10,7 +10,7 @@ from app import db, main, notify, security  # noqa: E402
 
 main.FAILURE_DELAY = 0
 HEADERS = {"X-Requested-With": "HA-Guardian"}
-GOOD = {"password": "mot-de-passe-de-test"}
+GOOD = {"password": main.config.APP_PASSWORD}  # mot de passe factice de conftest.py
 BAD = {"password": "mauvais"}
 
 
@@ -148,7 +148,7 @@ def test_mot_de_passe_non_ascii_et_json_invalide(env):
     c = make_client()
     assert c.post("/api/login", json={"password": "été€"}).status_code == 401
     assert c.post("/api/login", content=b"pas du json").status_code == 400
-    assert security.check_password("mot-de-passe-de-test")
+    assert security.check_password(main.config.APP_PASSWORD)
 
 
 def test_cookie_et_en_tetes(env):
