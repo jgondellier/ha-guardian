@@ -20,7 +20,7 @@ os.environ.update({
 
 import pytest  # noqa: E402
 
-from app import db, network, notify, watchdog  # noqa: E402
+from app import db, network, notify, security, watchdog  # noqa: E402
 
 db.init()
 _REAL_ACTIONS = dict(watchdog.ACTIONS)
@@ -41,6 +41,7 @@ def env(monkeypatch):
         last_action_ts=0.0, last_action=None, grace_until=0.0, busy=None, alerts={},
     )
     network.state["devices"] = []
+    security._failures.clear()
     calls: list[tuple] = []
 
     async def fake_send(title, message, priority=3, actions=None):

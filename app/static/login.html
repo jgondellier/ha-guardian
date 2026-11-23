@@ -15,19 +15,6 @@
       <div class="err" id="err"></div>
     </form>
   </div>
-  <script>
-    document.getElementById('f').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const err = document.getElementById('err');
-      err.textContent = '';
-      const r = await fetch('/api/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: document.getElementById('pw').value })
-      });
-      if (r.ok) { location.href = '/'; return; }
-      const d = await r.json().catch(() => ({}));
-      err.textContent = d.detail || 'Erreur de connexion';
-    });
-  </script>
+  <script src="/static/login.js"></script>
 </body>
 </html>

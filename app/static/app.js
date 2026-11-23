@@ -10,7 +10,9 @@ let lastStatus = null;
 let updating = false;
 
 async function api(path, opts = {}) {
-  const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  const r = await fetch(path, {
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'HA-Guardian' }, ...opts,
+  });
   if (r.status === 401) { location.href = '/login'; throw new Error('401'); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.detail || `Erreur ${r.status}`);
@@ -195,7 +197,7 @@ function renderBackupState(s) {
   else if (b.last_result) {
     parts.push(b.last_result.ok
       ? `✔︎ Dernière sauvegarde ${ago(b.last_result.ts)}`
-      : `<span style="color:var(--bad)">✖ Échec ${ago(b.last_result.ts)} : ${esc(b.last_result.message)}</span>`);
+      : `<span class="txt-bad">✖ Échec ${ago(b.last_result.ts)} : ${esc(b.last_result.message)}</span>`);
   }
   parts.push(b.enabled ? 'Automatique : activée' : 'Automatique : désactivée (voir Réglages)');
   $('backupInfo').innerHTML = parts.join(' · ');
@@ -278,7 +280,7 @@ function renderNetwork(s) {
   const a = n.asus;
   if (!n.asus_enabled) { $('asusBox').innerHTML = ''; return; }
   if (!a) { $('asusBox').innerHTML = '<div class="kv">Routeur Asus : première lecture dans quelques minutes…</div>'; return; }
-  if (a.error) { $('asusBox').innerHTML = `<div class="kv">Routeur Asus : <span style="color:var(--bad)">${esc(a.error)}</span> (${ago(a.ts)})</div>`; return; }
+  if (a.error) { $('asusBox').innerHTML = `<div class="kv">Routeur Asus : <span class="txt-bad">${esc(a.error)}</span> (${ago(a.ts)})</div>`; return; }
   const facts = [
     a.model ? `<b>${esc(a.model)}</b>` : null,
     a.firmware ? `firmware ${esc(a.firmware)}` : null,
@@ -465,7 +467,42 @@ async function loadSettings() {
     `Dossier des sauvegardes : <code>${esc(settings.backup_dir)}</code>`,
   ].join('<br>');
   if (lastStatus) renderStatus(lastStatus);
+  loadSecurity();
 }
+
+async function loadSecurity() {
+  const s = await api('/api/security');
+  const lines = [`Ton adresse vue par HA Guardian : <b>${esc(s.client_ip)}</b>`
+    + (s.https ? ' (connexion https)' : ' (connexion http)')];
+  if (['127.0.0.1', '::1'].includes(s.client_ip)) {
+    lines.push('<span class="txt-warn">Adresse locale : si tu passes par le proxy inverse, il ne transmet pas l’adresse réelle des visiteurs (voir FORWARDED_ALLOW_IPS dans le README). Le blocage d’IP bloquerait alors tout le monde.</span>');
+  }
+  if (s.weak_password) {
+    lines.push('<span class="txt-bad">Mot de passe faible : utilise au moins 12 caractères variés dans APP_PASSWORD avant d’exposer l’interface sur Internet.</span>');
+  }
+  $('securityInfo').innerHTML = lines.join('<br>');
+  $('blockedList').innerHTML = s.blocked.length
+    ? s.blocked.map((b) => `<div class="blocked"><span><b>${esc(b.key)}</b> bloquée jusqu’à ${esc(fmtTime(b.until))}
+        (${esc(b.attempts)} échecs)</span>
+        <button class="small" type="button" data-unblock="${esc(b.key)}">Débloquer</button></div>`).join('')
+    : '<div class="kv">Aucune adresse bloquée.</div>';
+}
+
+$('blockedList').addEventListener('click', async (e) => {
+  const key = e.target.dataset.unblock;
+  if (!key) return;
+  try {
+    await api(`/api/security/blocked/${encodeURIComponent(key)}`, { method: 'DELETE' });
+    toast(`Adresse ${key} débloquée`);
+    loadSecurity();
+  } catch (err) { toast(err.message, true); }
+});
+
+$('btnRevoke').addEventListener('click', async () => {
+  if (!(await confirmBox('Déconnecter <b>tous les autres appareils</b> ?<p>Ils devront saisir à nouveau le mot de passe. Cet appareil reste connecté.</p>'))) return;
+  try { await post('/api/sessions/revoke'); toast('Autres sessions fermées'); }
+  catch (err) { toast(err.message, true); }
+});
 
 $('settingsForm').addEventListener('submit', async (e) => {
   e.preventDefault();

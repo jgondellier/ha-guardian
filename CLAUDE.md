@@ -9,7 +9,8 @@ CHANGELOG et README sont en français.** Les noms de code (variables, fonctions)
 
 ## Architecture
 
-- `app/main.py` : FastAPI (routes, authentification par cookie signé, liens signés `/api/hook/*`).
+- `app/main.py` : FastAPI (routes, middleware de sécurité : blocage d'IP, session, CSRF par en-tête `X-Requested-With: HA-Guardian`, en-têtes ; liens signés à usage unique `/api/hook/*`).
+- `app/security.py` : blocage d'IP après N échecs (réglages `login_*`, blocages dans `kv`), jetons de session (révocables, liés au mot de passe), en-têtes (CSP stricte : aucun script ni style en ligne).
 - `app/watchdog.py` : boucle de contrôle, escalade par paliers, mode maintenance, alertes dédoublonnées (`alert()`), registre `ACTIONS`.
 - `app/tasks.py` : tâches planifiées (santé du mini-PC, sauvegardes, rapport hebdo, signal de vie, mises à jour HA, vérification de version).
 - `app/devices.py` : tout ce qui touche l'extérieur (API HA, SSH/SFTP avec asyncssh, ping, WoL, prise Shelly/Tasmota, SLZB-06).
@@ -47,7 +48,7 @@ sont remplacées par la fixture `env`. Pour l'updater, `updater._client` est rem
 - Une erreur de configuration (jeton HA refusé) ne doit jamais déclencher d'action.
 - Aucune action destructive sans confirmation dans l'interface.
 - Jamais de secret dans le dépôt : tout passe par `.env` (ignoré par git). Les valeurs d'exemple restent factices.
-- L'interface n'est pas faite pour être exposée sur Internet (VPN uniquement) ; garder l'authentification sur toutes les routes sauf `PUBLIC_PATHS` et les liens signés.
+- L'interface peut être exposée sur Internet **uniquement** derrière le proxy inversé HTTPS de DSM (adresse réelle via `FORWARDED_ALLOW_IPS`, lue par Uvicorn). Garder l'authentification sur toutes les routes sauf `PUBLIC_PATHS` et les liens signés ; toute requête modifiante de l'API passe par `api()` dans `app.js` (en-tête CSRF) ; pas de `<script>` en ligne ni d'attribut `style=` (CSP).
 
 ## Publier une version
 

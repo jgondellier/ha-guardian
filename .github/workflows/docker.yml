@@ -90,7 +90,9 @@ jobs:
             sleep 1
           done
           docker logs smoke
-          curl -fsS http://127.0.0.1:8099/healthz | grep -q '"${{ steps.v.outputs.version }}"'
+          # La version n'est donnée qu'aux requêtes venant du conteneur lui-même
+          docker exec smoke wget -qO- http://127.0.0.1:8099/healthz | grep -q '"${{ steps.v.outputs.version }}"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8099/api/login -H 'Content-Type: application/json' -d '{"password":"ci"}')" = "403"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8099/api/status)" = "401"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8099/login)" = "200"
           docker rm -f smoke
