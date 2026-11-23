@@ -128,11 +128,29 @@ def unblock(key: str) -> bool:
 
 
 # ================================================================ mot de passe
+_KDF_ITERATIONS = 100_000
+_kdf_cache: dict[str, bytes] = {}
+
+
+def _derive(password: str) -> bytes:
+    """Empreinte lente (PBKDF2) du mot de passe, salée avec la clé secrète de l'instance."""
+    salt = hmac.new(config.SECRET_KEY.encode(), b"password-salt", hashlib.sha256).digest()
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8", "replace"), salt,
+                               _KDF_ITERATIONS)
+
+
+def _expected() -> bytes:
+    """Empreinte du mot de passe configuré, calculée une seule fois."""
+    pw = config.APP_PASSWORD
+    if pw not in _kdf_cache:
+        _kdf_cache.clear()
+        _kdf_cache[pw] = _derive(pw)
+    return _kdf_cache[pw]
+
+
 def check_password(given: str) -> bool:
-    """Comparaison en temps constant (aussi pour les caractères non ASCII)."""
-    a = hashlib.sha256(given.encode("utf-8", "replace")).digest()
-    b = hashlib.sha256(config.APP_PASSWORD.encode()).digest()
-    return hmac.compare_digest(a, b)
+    """Comparaison en temps constant des empreintes (aussi pour les caractères non ASCII)."""
+    return hmac.compare_digest(_derive(given), _expected())
 
 
 def weak_password() -> bool:
@@ -147,8 +165,7 @@ def _epoch() -> int:
 
 def _sign(expires: str, epoch: int) -> str:
     # Le mot de passe entre dans la signature : le changer déconnecte toutes les sessions
-    pw = hashlib.sha256(config.APP_PASSWORD.encode()).hexdigest()
-    msg = f"session:{expires}:{epoch}:{pw}"
+    msg = f"session:{expires}:{epoch}:{_expected().hex()}"
     return hmac.new(config.SECRET_KEY.encode(), msg.encode(), hashlib.sha256).hexdigest()
 
 

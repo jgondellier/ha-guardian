@@ -123,7 +123,7 @@ async def login(request: Request):
         password = str(body.get("password", ""))[:1024]
     except Exception:  # noqa: BLE001
         raise HTTPException(400, "Requête invalide")
-    if not security.check_password(password):
+    if not await asyncio.to_thread(security.check_password, password):
         left, until = await _record_failure(ip)
         if until:
             return _blocked_response("/api/login", until)
