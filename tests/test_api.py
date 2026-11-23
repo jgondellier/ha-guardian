@@ -4,12 +4,16 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app import main  # noqa: E402
 from app.main import app  # noqa: E402
+
+main.FAILURE_DELAY = 0
+HEADERS = {"X-Requested-With": "HA-Guardian"}
 
 
 @pytest.fixture(scope="module")
 def client():
-    with TestClient(app) as c:
+    with TestClient(app, headers=HEADERS) as c:
         yield c
 
 

@@ -175,6 +175,16 @@
           </div>
         </fieldset>
         <fieldset>
+          <legend>Sécurité de la connexion</legend>
+          <div class="settings">
+            <label>Bloquer l'adresse IP après N échecs<input type="number" min="1" max="100" name="login_max_attempts"></label>
+            <label>Échecs comptés sur (min)<input type="number" min="1" name="login_window_minutes"></label>
+            <label>Durée du blocage (min)<input type="number" min="1" name="login_block_minutes"></label>
+            <label>Durée d'une session (jours)<input type="number" min="1" max="365" name="session_days"></label>
+            <label class="check"><input type="checkbox" name="login_notify"> Notifier chaque connexion réussie et chaque blocage</label>
+          </div>
+        </fieldset>
+        <fieldset>
           <legend>Rapport hebdomadaire</legend>
           <div class="settings">
             <label class="check"><input type="checkbox" name="report_enabled"> Envoyer un rapport chaque semaine</label>
@@ -203,6 +213,14 @@
           <button class="small danger" id="btnResetFp" type="button">Réinitialiser l'empreinte</button>
         </div>
         <p class="kv" id="sshInfo"></p>
+      </details>
+      <details id="securityBox">
+        <summary>Sécurité : adresses bloquées et sessions</summary>
+        <p class="kv" id="securityInfo"></p>
+        <div id="blockedList" class="list"></div>
+        <div class="form-actions">
+          <button class="small danger" id="btnRevoke" type="button">Déconnecter les autres appareils</button>
+        </div>
       </details>
       <details>
         <summary>Informations</summary>

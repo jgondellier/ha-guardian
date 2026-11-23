@@ -93,9 +93,32 @@ Routeur étage (AiMesh) ; 192.168.1.2
 
 ## Options utiles
 
-- **Boutons dans les notifications ntfy** : renseigner `PUBLIC_URL` avec une adresse joignable depuis le téléphone, par exemple via le VPN Server de DSM ou Tailscale. Les liens sont signés et valables 12 h.
+- **Boutons dans les notifications ntfy** : renseigner `PUBLIC_URL` avec une adresse joignable depuis le téléphone (VPN, Tailscale ou l'adresse publique décrite plus bas). Les liens sont signés, valables 12 h et **utilisables une seule fois**.
 - **Signal de vie** : créer un « check » gratuit sur healthchecks.io (période 5 min) et mettre son URL dans `HEARTBEAT_URL`. Tu es alors prévenu si le NAS ou HA Guardian s'arrête.
-- **HTTPS** : *Panneau de configuration* > *Portail de connexion* > *Avancé* > **Proxy inversé**. Source `https://guardian.ton-domaine:443`, destination `http://localhost:8099`.
+- **HTTPS** : voir la section suivante (proxy inversé de DSM).
+
+## Accès depuis Internet (proxy inversé)
+
+Un VPN (VPN Server de DSM, Tailscale) reste la solution la plus sûre : l'interface peut redémarrer HA et couper le mini-PC. Si tu l'exposes quand même, par exemple sur `haguardian.ton-domaine.fr`, fais-le **uniquement en HTTPS, derrière le proxy inversé de DSM**, jamais en ouvrant le port 8099.
+
+**Protections intégrées** : blocage de l'adresse IP après N mots de passe faux (5 par défaut, réglable dans *Réglages* > *Sécurité de la connexion*, avec la durée du blocage), notification à chaque connexion et à chaque blocage, sessions de 7 jours (réglable) et bouton « Déconnecter les autres appareils », cookie `Secure`/`HttpOnly`/`SameSite=Strict`, protection CSRF, en-têtes de sécurité (CSP stricte, HSTS en https, anti-iframe), liens de notification à usage unique. La liste des adresses bloquées et le bouton *Débloquer* sont dans *Réglages* > *Sécurité*.
+
+1. **Mot de passe** : mets dans `APP_PASSWORD` un mot de passe long (au moins 12 caractères, idéalement une phrase de passe ou `openssl rand -base64 18`). L'interface signale un mot de passe trop faible.
+2. **DNS** : chez ton registrar, crée un enregistrement `A` `haguardian` vers l'IP publique de ta box (ou un `CNAME` vers ton adresse DDNS Synology si l'IP change).
+3. **Box / routeur** : redirige les ports **443** (et **80**, utile au renouvellement Let's Encrypt) vers le NAS. Ne redirige **pas** le port 8099.
+4. **Certificat** : DSM > *Panneau de configuration* > *Sécurité* > *Certificat* > *Ajouter* > *Let's Encrypt*, nom de domaine `haguardian.ton-domaine.fr`.
+5. **Proxy inversé** : DSM > *Panneau de configuration* > *Portail de connexion* > *Avancé* > *Proxy inversé* > *Créer* :
+   - Source : `HTTPS`, nom d'hôte `haguardian.ton-domaine.fr`, port `443`, cocher **Activer HSTS** ;
+   - Destination : `HTTP`, `localhost`, port `8099` (bien `localhost` : c'est ce qui permet à HA Guardian de faire confiance aux en-têtes du proxy) ;
+   - *En-tête personnalisé* : ajoute `X-Forwarded-For` = `$proxy_add_x_forwarded_for` et `X-Forwarded-Proto` = `$scheme` s'ils n'y sont pas déjà.
+   Puis dans *Certificat* > *Paramètres*, associe le certificat Let's Encrypt à cette entrée du proxy.
+6. **Vérifier** : ouvre `https://haguardian.ton-domaine.fr` depuis le téléphone **en 4G** (Wi-Fi coupé). Dans *Réglages* > *Sécurité*, « Ton adresse vue par HA Guardian » doit être ton IP 4G. Si elle affiche `127.0.0.1`, le proxy ne transmet pas l'adresse réelle : le blocage bloquerait alors tout le monde en même temps (corrige l'étape 5 avant d'aller plus loin).
+7. Mets `PUBLIC_URL=https://haguardian.ton-domaine.fr` dans `.env` pour les boutons des notifications, et **protège ton sujet ntfy** (sujet au nom imprévisible et `NTFY_TOKEN`, ou Telegram) : les liens d'action y circulent.
+8. Optionnel : `LISTEN_HOST=127.0.0.1` dans `.env` pour que l'interface ne soit plus joignable qu'à travers le proxy (le port 8099 n'écoute plus sur le réseau local).
+
+Si le proxy n'est pas sur le NAS (autre machine, Cloudflare Tunnel…), indique son adresse dans `FORWARDED_ALLOW_IPS` (par défaut `127.0.0.1,::1`). N'y mets jamais `*` : n'importe qui pourrait alors se faire passer pour une autre adresse et contourner le blocage.
+
+**Bloqué toi-même ?** Le blocage expire tout seul après la durée réglée. Sinon, connecte-toi depuis une autre adresse (Wi-Fi de la maison si tu étais en 4G, ou l'inverse) et clique sur *Débloquer*.
 
 ## Mise à jour de HA Guardian
 
@@ -128,7 +151,7 @@ python -m pytest
 
 ## Sécurité
 
-- Ne publie pas le port 8099 sur Internet : pour un accès à distance, passe par un VPN.
+- Ne publie jamais le port 8099 sur Internet. Pour un accès à distance : VPN, ou proxy inversé HTTPS (voir « Accès depuis Internet »).
 - `.env` contient le jeton HA et n'est jamais envoyé sur GitHub (voir `.gitignore`).
 - Les conteneurs tournent avec un système de fichiers en lecture seule et sans élévation de privilèges.
 - Watchtower a accès au Docker du NAS (c'est nécessaire pour remplacer le conteneur). Son API n'écoute que sur le NAS lui-même et exige `UPDATE_TOKEN`. La principale protection reste donc ton compte GitHub : active la double authentification.

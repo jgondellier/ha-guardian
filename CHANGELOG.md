@@ -1,5 +1,15 @@
 # Historique des versions
 
+## 2.4.0
+- Sécurité pour un accès depuis Internet (derrière le proxy inversé HTTPS de DSM) : voir la section « Accès depuis Internet » du README.
+- Blocage de l'adresse IP après N mots de passe faux (5 par défaut sur 15 min, blocage 60 min, tout est réglable dans *Réglages* > *Sécurité de la connexion*). Le nombre d'essais restants s'affiche, le blocage est conservé au redémarrage, et les adresses IPv6 sont comptées par préfixe /64.
+- Notification à chaque connexion réussie et à chaque blocage (désactivable). Liste des adresses bloquées avec bouton *Débloquer*, et bouton « Déconnecter les autres appareils ».
+- Sessions de 7 jours par défaut (réglable) ; changer `APP_PASSWORD` ferme toutes les sessions. **Après la mise à jour, il faut se reconnecter une fois.**
+- Protection CSRF, politique de sécurité du contenu (CSP) stricte, HSTS en https, en-têtes anti-cache sur l'API, version masquée hors du NAS, en-tête `Server` supprimé.
+- Les liens d'action des notifications ne servent plus qu'une fois, et un lien falsifié compte comme un échec de connexion.
+- Nouvelles variables `.env` : `FORWARDED_ALLOW_IPS` (proxys de confiance, `127.0.0.1` par défaut) et `LISTEN_HOST` (`127.0.0.1` pour n'accepter que le proxy).
+- L'interface avertit si le mot de passe est faible ou si le proxy ne transmet pas l'adresse réelle des visiteurs.
+
 ## 2.3.0
 - Santé de Home Assistant : état des apps (ex add-ons), alerte si l'une s'arrête et redémarrage automatique optionnel (limité, respecte la maintenance).
 - Intégrations en échec et réparations proposées par HA, nombre d'erreurs dans le journal (alerte en cas de pic), taille de la base de données.

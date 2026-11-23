@@ -6,7 +6,7 @@ FROM python:3.15-alpine
 ARG APP_VERSION=dev
 ARG GIT_SHA=dev
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
-    DATA_DIR=/data BACKUP_DIR=/backups PORT=8099 \
+    DATA_DIR=/data BACKUP_DIR=/backups PORT=8099 LISTEN_HOST=0.0.0.0 \
     APP_VERSION=${APP_VERSION} GIT_SHA=${GIT_SHA}
 
 LABEL org.opencontainers.image.source="https://github.com/jgondellier/ha-guardian" \
@@ -32,4 +32,4 @@ VOLUME ["/data", "/backups"]
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT','8099'), timeout=4)"
 
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host ${LISTEN_HOST} --port ${PORT} --proxy-headers --no-server-header"]

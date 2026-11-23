@@ -46,6 +46,12 @@ DEFAULT_SETTINGS = {
     # Réseau : un équipement par ligne « Nom ; hôte [; port ou URL] [; critique] »
     "network_devices": "",
     "network_fail_after": 3,
+    # Sécurité de l'accès à l'interface
+    "login_max_attempts": 5,        # échecs tolérés avant de bloquer l'adresse IP
+    "login_window_minutes": 15,     # période sur laquelle les échecs sont comptés
+    "login_block_minutes": 60,      # durée du blocage
+    "login_notify": True,           # notifier chaque connexion réussie et chaque blocage
+    "session_days": 7,              # durée d'une session avant de devoir se reconnecter
     # Rapport hebdomadaire
     "report_enabled": True,
     "report_day": 0,                # 0 = lundi

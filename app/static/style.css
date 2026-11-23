@@ -165,3 +165,7 @@ dialog .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 1
   padding: 28px; width: 100%; max-width: 340px; display: grid; gap: 14px; }
 .login h1 { margin: 0; font-size: 20px; }
 .login .err { color: var(--bad); font-size: 14px; min-height: 1.2em; }
+
+.txt-bad { color: var(--bad); }
+.txt-warn { color: var(--warn); }
+.blocked { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 6px; }

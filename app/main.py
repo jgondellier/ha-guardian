@@ -1,17 +1,17 @@
 """Application web HA Guardian : API + interface."""
 import asyncio
-import hashlib
-import hmac
 import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (FileResponse, JSONResponse, PlainTextResponse,
+                               RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 
-from . import backups, config, db, devices, health, network, notify, tasks, updater, watchdog
+from . import (backups, config, db, devices, health, network, notify, security, tasks, updater,
+               watchdog)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("guardian")
@@ -19,7 +19,9 @@ log = logging.getLogger("guardian")
 STATIC = Path(__file__).parent / "static"
 COOKIE = "guardian_session"
 SESSION_DAYS = 30
-PUBLIC_PATHS = {"/login", "/api/login", "/static/style.css", "/healthz"}
+PUBLIC_PATHS = {"/login", "/api/login", "/static/style.css", "/static/login.js", "/healthz"}
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+FAILURE_DELAY = 1.0  # secondes d'attente après un échec (ralentit les essais en rafale)
 
 if not config.APP_PASSWORD:
     raise SystemExit("APP_PASSWORD est vide : définis un mot de passe dans le fichier .env")
@@ -36,42 +38,59 @@ async def lifespan(_app: FastAPI):
         t.cancel()
 
 
-app = FastAPI(title="HA Guardian", lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title="HA Guardian", lifespan=lifespan, docs_url=None, redoc_url=None,
+              openapi_url=None)
 
 
 # ================================================================ authentification
-def _sign(value: str) -> str:
-    return hmac.new(config.SECRET_KEY.encode(), value.encode(), hashlib.sha256).hexdigest()
+def client_ip(request: Request) -> str:
+    """Adresse du visiteur. Derrière un proxy inverse, Uvicorn la lit dans X-Forwarded-For,
+    uniquement si le proxy figure dans FORWARDED_ALLOW_IPS (127.0.0.1 par défaut)."""
+    return request.client.host if request.client else "?"
 
 
-def _make_token() -> str:
-    expires = str(int(time.time()) + SESSION_DAYS * 86400)
-    return f"{expires}.{_sign(expires)}"
+def _blocked_response(path: str, until: float) -> Response:
+    minutes = max(1, round((until - time.time()) / 60))
+    msg = f"Trop de tentatives de connexion : accès bloqué pendant encore {minutes} min"
+    if path.startswith("/api/"):
+        return JSONResponse({"detail": msg}, status_code=429,
+                            headers={"Retry-After": str(int(until - time.time()) + 1)})
+    return PlainTextResponse(msg, status_code=429)
 
 
-def _valid(token: str | None) -> bool:
-    if not token or "." not in token:
-        return False
-    expires, sig = token.split(".", 1)
-    return (hmac.compare_digest(sig, _sign(expires))
-            and expires.isdigit() and int(expires) > time.time())
-
-
-_failed_logins: dict[str, list[float]] = {}
+async def _route(request: Request, call_next) -> Response:
+    path = request.url.path
+    ip = client_ip(request)
+    if path != "/healthz":
+        until = security.blocked_until(ip)
+        if until:
+            return _blocked_response(path, until)
+    public = path in PUBLIC_PATHS or path.startswith("/api/hook/")
+    if not public and not security.valid_token(request.cookies.get(COOKIE)):
+        if path.startswith("/api/"):
+            return JSONResponse({"detail": "Non authentifié"}, status_code=401)
+        return RedirectResponse("/login")
+    # Protection CSRF : les requêtes qui modifient quelque chose viennent de l'interface
+    if (request.method not in SAFE_METHODS and path.startswith("/api/")
+            and not path.startswith("/api/hook/")):
+        if (request.headers.get(security.CSRF_HEADER) != security.CSRF_VALUE
+                or request.headers.get("sec-fetch-site") == "cross-site"):
+            return JSONResponse({"detail": "Requête refusée (origine non vérifiée)"},
+                                status_code=403)
+    return await call_next(request)
 
 
 @app.middleware("http")
-async def auth_middleware(request: Request, call_next):
+async def security_middleware(request: Request, call_next):
+    response = await _route(request, call_next)
+    for k, v in security.SECURITY_HEADERS.items():
+        response.headers.setdefault(k, v)
+    if request.url.scheme == "https":
+        response.headers.setdefault("Strict-Transport-Security", security.HSTS)
     path = request.url.path
-    if (path in PUBLIC_PATHS or path.startswith("/api/hook/")
-            or _valid(request.cookies.get(COOKIE))):
-        response = await call_next(request)
-        response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        return response
-    if path.startswith("/api/"):
-        return JSONResponse({"detail": "Non authentifié"}, status_code=401)
-    return RedirectResponse("/login")
+    if path.startswith("/api/") or not path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
 
 
 @app.get("/login")
@@ -79,30 +98,87 @@ async def login_page():
     return FileResponse(STATIC / "login.html")
 
 
+async def _record_failure(ip: str) -> tuple[int, float | None]:
+    """Compte un échec (mot de passe ou lien signé) et bloque l'IP au-delà de la limite."""
+    left, until = security.register_failure(ip)
+    await asyncio.sleep(FAILURE_DELAY)
+    if until:
+        settings = db.get_settings()
+        msg = (f"Adresse {ip} bloquée {settings['login_block_minutes']} min après "
+               f"{settings['login_max_attempts']} échecs de connexion")
+        log.warning(msg)
+        db.add_event("warn", msg)
+        if settings["login_notify"]:
+            tasks.spawn(notify.send("🔒 HA Guardian : IP bloquée", msg, priority=4))
+    else:
+        log.info("Échec de connexion depuis %s (%d essai(s) restant(s))", ip, left)
+    return left, until
+
+
 @app.post("/api/login")
 async def login(request: Request):
-    ip = request.client.host if request.client else "?"
-    recent = [t for t in _failed_logins.get(ip, []) if t > time.time() - 600]
-    if len(recent) >= 5:
-        raise HTTPException(429, "Trop de tentatives, réessaie dans 10 minutes")
-    body = await request.json()
-    if not hmac.compare_digest(str(body.get("password", "")), config.APP_PASSWORD):
-        recent.append(time.time())
-        _failed_logins[ip] = recent
-        await asyncio.sleep(1)
-        raise HTTPException(401, "Mot de passe incorrect")
-    _failed_logins.pop(ip, None)
+    ip = client_ip(request)
+    try:
+        body = await request.json()
+        password = str(body.get("password", ""))[:1024]
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "Requête invalide")
+    if not await asyncio.to_thread(security.check_password, password):
+        left, until = await _record_failure(ip)
+        if until:
+            return _blocked_response("/api/login", until)
+        raise HTTPException(401, f"Mot de passe incorrect ({left} essai{'s' if left > 1 else ''}"
+                                 f" restant{'s' if left > 1 else ''})")
+    security.register_success(ip)
+    settings = db.get_settings()
+    db.add_event("info", f"Connexion à l'interface depuis {ip}")
+    if settings["login_notify"]:
+        tasks.spawn(notify.send("🔑 HA Guardian : connexion",
+                                f"Connexion réussie depuis {ip}", priority=2))
     resp = JSONResponse({"ok": True})
-    resp.set_cookie(COOKIE, _make_token(), max_age=SESSION_DAYS * 86400, httponly=True,
-                    samesite="strict", secure=request.url.scheme == "https")
+    _set_session(resp, request, settings["session_days"])
     return resp
+
+
+def _set_session(resp: Response, request: Request, days: int) -> None:
+    days = max(1, days)
+    resp.set_cookie(COOKIE, security.make_token(days), max_age=days * 86400, httponly=True,
+                    samesite="strict", secure=request.url.scheme == "https", path="/")
 
 
 @app.post("/api/logout")
 async def logout():
     resp = JSONResponse({"ok": True})
-    resp.delete_cookie(COOKIE)
+    resp.delete_cookie(COOKIE, path="/")
     return resp
+
+
+@app.post("/api/sessions/revoke")
+async def revoke_sessions(request: Request):
+    """Déconnecte tous les appareils, sauf celui qui fait la demande."""
+    security.revoke_sessions()
+    db.add_event("warn", f"Toutes les sessions ont été fermées (depuis {client_ip(request)})")
+    resp = JSONResponse({"ok": True})
+    _set_session(resp, request, db.get_settings()["session_days"])
+    return resp
+
+
+@app.get("/api/security")
+async def security_state(request: Request):
+    return {
+        "client_ip": client_ip(request),
+        "https": request.url.scheme == "https",
+        "weak_password": security.weak_password(),
+        "blocked": security.list_blocks(),
+    }
+
+
+@app.delete("/api/security/blocked/{key:path}")
+async def unblock_ip(key: str):
+    if not security.unblock(key):
+        raise HTTPException(404, "Adresse non bloquée")
+    db.add_event("info", f"Adresse {key} débloquée")
+    return {"ok": True}
 
 
 # ================================================================ pages
@@ -112,8 +188,11 @@ async def index():
 
 
 @app.get("/healthz")
-async def healthz():
-    return {"ok": True, "version": config.APP_VERSION}
+async def healthz(request: Request):
+    # La version n'est donnée qu'au NAS lui-même (contrôle de santé Docker, CI)
+    if client_ip(request) in ("127.0.0.1", "::1"):
+        return {"ok": True, "version": config.APP_VERSION}
+    return {"ok": True}
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -197,11 +276,23 @@ async def run_action(key: str):
     return {"ok": True, "message": f"{watchdog.ACTIONS[key][0]} : lancé"}
 
 
+def _consume_hook(sig: str, exp: int) -> bool:
+    """Un lien de notification ne sert qu'une fois (rejeu impossible)."""
+    now = time.time()
+    used = {s: e for s, e in (db.kv_get("used_hooks", {}) or {}).items() if e > now}
+    if sig in used:
+        return False
+    used[sig] = exp
+    db.kv_set("used_hooks", used)
+    return True
+
+
 @app.api_route("/api/hook/{key}", methods=["GET", "POST"])
-async def hook(key: str, exp: int = 0, sig: str = ""):
+async def hook(request: Request, key: str, exp: int = 0, sig: str = ""):
     """Boutons des notifications ntfy (liens signés, valables 12 h)."""
-    if not notify.verify_hook(key, exp, sig):
-        raise HTTPException(403, "Lien invalide ou expiré")
+    if not notify.verify_hook(key, exp, sig) or not _consume_hook(sig, exp):
+        await _record_failure(client_ip(request))
+        raise HTTPException(403, "Lien invalide, expiré ou déjà utilisé")
     if key == "maintenance_60":
         watchdog.set_maintenance(60, origin="notification")
         return {"ok": True, "message": "Maintenance 1 h"}
